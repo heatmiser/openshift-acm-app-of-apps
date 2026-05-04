@@ -1,0 +1,12 @@
+---
+# Maps each cluster name to the git branch ArgoCD should track for that cluster.
+# The Kustomize replacement in clusters/{name}/kustomization.yaml reads this
+# ConfigMap and patches spec.source.targetRevision in all generated Applications.
+# Update the branch here to promote a cluster to a different release branch.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-versions
+  namespace: openshift-gitops
+data:
+  hub: main

@@ -1,0 +1,17 @@
+---
+# Grants the ArgoCD application controller cluster-admin so it can manage
+# cluster-scoped resources (CRDs, ClusterRoles, Namespaces, etc.).
+# The ServiceAccount is created by the ArgoCD operator when the ArgoCD CR
+# is processed; the binding is valid before the SA exists (Kubernetes allows it).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openshift-gitops-argocd-application-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: openshift-gitops-argocd-application-controller
+    namespace: openshift-gitops

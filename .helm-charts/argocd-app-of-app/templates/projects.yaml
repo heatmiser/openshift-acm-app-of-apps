@@ -1,0 +1,40 @@
+{{- range $name, $project := .Values.projects }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.defaults.namespace }}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: {{ $project.description | default $name | quote }}
+  sourceRepos:
+    {{- if $project.sourceRepos }}
+    {{- toYaml $project.sourceRepos | nindent 4 }}
+    {{- else }}
+    - '*'
+    {{- end }}
+  destinations:
+    {{- if $project.destinations }}
+    {{- toYaml $project.destinations | nindent 4 }}
+    {{- else }}
+    - namespace: '*'
+      server: https://kubernetes.default.svc
+    {{- end }}
+  clusterResourceWhitelist:
+    {{- if $project.clusterResourceWhitelist }}
+    {{- toYaml $project.clusterResourceWhitelist | nindent 4 }}
+    {{- else }}
+    - group: '*'
+      kind: '*'
+    {{- end }}
+  {{- if $project.namespaceResourceBlacklist }}
+  namespaceResourceBlacklist:
+    {{- toYaml $project.namespaceResourceBlacklist | nindent 4 }}
+  {{- end }}
+  {{- if $project.roles }}
+  roles:
+    {{- toYaml $project.roles | nindent 4 }}
+  {{- end }}
+{{- end }}

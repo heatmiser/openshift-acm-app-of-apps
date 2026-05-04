@@ -1,0 +1,35 @@
+---
+# === WAIT FOR INSTALLATION ===
+# Polls openshift-install agent wait-for install-complete until the cluster
+# reports a successful install or the timeout is reached.
+#
+# Unlike RHEL installs (which poll SSH), the Agent-Based Installer provides
+# its own completion signal via the openshift-install binary. Bootstrapping
+# typically takes 30-60 minutes on bare metal.
+#
+# Runs in localhost play context.
+
+- name: "Wait for OpenShift agent-based installation to complete"
+  ansible.builtin.command:
+    argv:
+      - "{{ openshift_install_binary }}"
+      - agent
+      - wait-for
+      - install-complete
+      - "--dir"
+      - "{{ install_dir }}"
+      - "--log-level"
+      - info
+  register: install_complete_result
+  until: install_complete_result.rc == 0
+  # 120 retries × 60s = up to 2 hours
+  retries: 120
+  delay: 60
+  changed_when: false
+
+- name: "Display cluster access information"
+  ansible.builtin.debug:
+    msg:
+      - "Cluster {{ cluster_name }}.{{ base_domain }} installation complete."
+      - "kubeconfig: {{ install_dir }}/auth/kubeconfig"
+      - "kubeadmin password: {{ install_dir }}/auth/kubeadmin-password"

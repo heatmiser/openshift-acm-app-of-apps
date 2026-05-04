@@ -1,0 +1,27 @@
+# Chart-level defaults — overridden by cluster values.yaml.
+# repoURL and targetRevision are set by the cluster values and then patched
+# further by the Kustomize replacement from clusters/cluster-versions.yaml.
+defaults:
+  repoURL: ""
+  targetRevision: main
+  namespace: openshift-gitops
+  project: cluster-config
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+# Applications and projects are defined in the cluster-specific values.yaml
+# (clusters/{name}/values.yaml) and the shared base (groups/all/values.yaml).
+applications: {}
+projects: {}

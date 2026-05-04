@@ -1,0 +1,29 @@
+{{ ansible_managed | comment }}
+---
+apiVersion: v1
+baseDomain: {{ base_domain }}
+compute:
+  - architecture: amd64
+    hyperthreading: Enabled
+    name: worker
+    replicas: 0
+controlPlane:
+  architecture: amd64
+  hyperthreading: Enabled
+  name: master
+  replicas: 3
+metadata:
+  name: {{ cluster_name }}
+networking:
+  clusterNetwork:
+    - cidr: {{ cluster_network_cidr }}
+      hostPrefix: {{ cluster_network_host_prefix }}
+  machineNetwork:
+    - cidr: {{ machine_network_cidr }}
+  networkType: {{ network_type }}
+  serviceNetwork:
+    - {{ service_network_cidr }}
+platform:
+  none: {}
+pullSecret: '{{ vault_pull_secret }}'
+sshKey: '{{ vault_ssh_public_key }}'

@@ -1,0 +1,16 @@
+---
+node:
+  hostname: "hub-node3"
+  domain: "{{ base_domain }}"
+  ipv4_address: "192.168.1.12"
+  ipv4_prefix: 24
+  ipv4_gateway: "192.168.1.1"
+  ipv4_dns: "192.168.1.1"
+  mac: "aa:bb:cc:dd:ee:03"
+  interface: "eno1"
+  role: "master"
+
+# BMC credentials — set via ansible-vault (ansible-vault edit host_vars/hub-node3.yml)
+idrac_ip: "192.168.0.13"
+idrac_user: "{{ vault_idrac_user_node3 }}"
+idrac_password: "{{ vault_idrac_password_node3 }}"

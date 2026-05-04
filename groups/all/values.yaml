@@ -1,0 +1,49 @@
+# groups/all/values.yaml
+#
+# Shared baseline ArgoCD applications and AppProject applicable to all clusters.
+# Merged with the cluster-specific values (clusters/{name}/values.yaml) by the
+# HelmChartInflationGenerator in each cluster's kustomization.yaml.
+#
+# Helm merges dict keys from both files, so applications defined here coexist
+# with applications defined in the cluster values — no overwriting unless the
+# same key appears in both files (cluster values win).
+
+defaults:
+  repoURL: "https://github.com/heatmiser/openshift-acm-app-of-apps"
+  targetRevision: main
+  namespace: openshift-gitops
+  project: cluster-config
+  destination:
+    server: https://kubernetes.default.svc
+
+projects:
+  cluster-config:
+    description: "Cluster configuration and operator lifecycle management"
+    sourceRepos:
+      - '*'
+    destinations:
+      - namespace: '*'
+        server: https://kubernetes.default.svc
+    clusterResourceWhitelist:
+      - group: '*'
+        kind: '*'
+
+# Operators shared across all clusters (wave 5)
+applications:
+  cert-manager-operator:
+    path: components/cert-manager-operator
+    syncWave: "5"
+    destination:
+      namespace: cert-manager-operator
+
+  metallb-operator:
+    path: components/metallb-operator
+    syncWave: "5"
+    destination:
+      namespace: metallb-system
+
+  nmstate-operator:
+    path: components/nmstate-operator
+    syncWave: "5"
+    destination:
+      namespace: openshift-nmstate

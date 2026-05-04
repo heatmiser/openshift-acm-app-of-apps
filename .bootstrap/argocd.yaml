@@ -1,0 +1,113 @@
+---
+# ArgoCD instance deployed by the OpenShift GitOps operator.
+# Applied via kubernetes.core.k8s template: so Jinja2 vars are substituted.
+#
+# Key configuration:
+#   - repo server env vars: make ${CLUSTER_NAME} etc. available to the CMP sidecar
+#   - setenv-plugin sidecar: runs envsubst on manifests in directories that opt in
+#     via a .use-setenv-plugin sentinel file
+#   - server route: reencrypt TLS termination (OpenShift-native)
+#   - RBAC: cluster-admins group maps to ArgoCD admin role
+apiVersion: argoproj.io/v1alpha1
+kind: ArgoCD
+metadata:
+  name: openshift-gitops
+  namespace: "{{ gitops_namespace }}"
+spec:
+  # Required for clusters/hub/kustomization.yaml:
+  #   --enable-helm  — allows HelmChartInflationGenerator inside kustomize build
+  #   --load-restrictor=LoadRestrictionsNone  — permits chartHome: ../../.helm-charts
+  #     (a path above the kustomization root that kustomize blocks by default)
+  kustomizeBuildOptions: "--enable-helm --load-restrictor=LoadRestrictionsNone"
+
+  applicationSet:
+    resources:
+      limits:
+        cpu: "2"
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+  rbac:
+    policy: |
+      g, system:cluster-admins, role:admin
+    scopes: '[groups]'
+
+  repo:
+    # Environment variables available to the envsubst CMP sidecar and all
+    # repo-server plugin executions.
+    env:
+      - name: CLUSTER_NAME
+        value: "{{ cluster_name }}"
+      - name: CLUSTER_BASE_DOMAIN
+        value: "{{ cluster_name }}.{{ base_domain }}"
+      - name: PLATFORM_BASE_DOMAIN
+        value: "{{ base_domain }}"
+      - name: INFRA_GITOPS_REPO
+        value: "{{ gitops_repo }}"
+
+    # initContainer installs envsubst from the gettext package into a shared
+    # volume so the sidecar container can use it without requiring internet
+    # access at CMP invocation time.
+    volumes:
+      - name: custom-tools
+        emptyDir: {}
+      - name: setenv-plugin-config
+        configMap:
+          name: setenv-plugin-config
+
+    initContainers:
+      - name: install-envsubst
+        image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+        command: [sh, -c]
+        args:
+          - "microdnf install -y gettext && cp /usr/bin/envsubst /custom-tools/envsubst"
+        volumeMounts:
+          - name: custom-tools
+            mountPath: /custom-tools
+
+    # The setenv-plugin sidecar runs as an ArgoCD CMP server. ArgoCD mounts
+    # argocd-cmp-server at /var/run/argocd/ automatically for sidecar containers.
+    sidecarContainers:
+      - name: setenv-plugin
+        command: [/var/run/argocd/argocd-cmp-server]
+        image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+        securityContext:
+          runAsNonRoot: true
+        env:
+          - name: CLUSTER_NAME
+            value: "{{ cluster_name }}"
+          - name: CLUSTER_BASE_DOMAIN
+            value: "{{ cluster_name }}.{{ base_domain }}"
+          - name: PLATFORM_BASE_DOMAIN
+            value: "{{ base_domain }}"
+          - name: INFRA_GITOPS_REPO
+            value: "{{ gitops_repo }}"
+        volumeMounts:
+          - name: var-files
+            mountPath: /var/run/argocd
+          - name: plugins
+            mountPath: /home/argocd/cmp-server/plugins
+          - name: tmp
+            mountPath: /tmp
+          - name: setenv-plugin-config
+            mountPath: /home/argocd/cmp-server/config/plugin.yaml
+            subPath: plugin.yaml
+          - name: custom-tools
+            mountPath: /usr/local/bin/envsubst
+            subPath: envsubst
+
+    volumeMounts:
+      - name: custom-tools
+        mountPath: /usr/local/bin/envsubst
+        subPath: envsubst
+
+  server:
+    autoscale:
+      enabled: false
+    insecure: false
+    route:
+      enabled: true
+      tls:
+        termination: reencrypt

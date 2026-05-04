@@ -1,0 +1,40 @@
+{{- range $name, $app := .Values.applications }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $name }}
+  namespace: {{ $app.namespace | default $.Values.defaults.namespace }}
+  annotations:
+    {{- if $app.syncWave }}
+    argocd.argoproj.io/sync-wave: {{ $app.syncWave | quote }}
+    {{- end }}
+    {{- with $app.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ $app.project | default $.Values.defaults.project }}
+  source:
+    repoURL: {{ $app.repoURL | default $.Values.defaults.repoURL | quote }}
+    targetRevision: {{ $app.targetRevision | default $.Values.defaults.targetRevision | quote }}
+    path: {{ $app.path | quote }}
+    {{- if $app.helm }}
+    helm:
+      {{- toYaml $app.helm | nindent 6 }}
+    {{- end }}
+    {{- if $app.kustomize }}
+    kustomize:
+      {{- toYaml $app.kustomize | nindent 6 }}
+    {{- end }}
+  destination:
+    server: {{ $app | dig "destination" "server" $.Values.defaults.destination.server | quote }}
+    namespace: {{ $app | dig "destination" "namespace" $.Values.defaults.namespace | quote }}
+  syncPolicy:
+    {{- if $app.syncPolicy }}
+    {{- toYaml $app.syncPolicy | nindent 4 }}
+    {{- else }}
+    {{- toYaml $.Values.defaults.syncPolicy | nindent 4 }}
+    {{- end }}
+{{- end }}

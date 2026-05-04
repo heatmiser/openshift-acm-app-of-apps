@@ -1,0 +1,33 @@
+---
+# Config Management Plugin definition for the envsubst sidecar.
+# ArgoCD uses this plugin for any source directory that contains a
+# .use-setenv-plugin sentinel file, substituting ${VAR} patterns using
+# the environment variables set in the ArgoCD repo server (CLUSTER_NAME,
+# CLUSTER_BASE_DOMAIN, PLATFORM_BASE_DOMAIN, INFRA_GITOPS_REPO).
+#
+# To enable the plugin for a directory, create an empty .use-setenv-plugin
+# file at the root of that source path.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: setenv-plugin-config
+  namespace: openshift-gitops
+data:
+  plugin.yaml: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ConfigManagementPlugin
+    metadata:
+      name: setenv-plugin
+    spec:
+      version: v1.0
+      generate:
+        command: [sh, -c]
+        args:
+          - |
+            find . -type f -name "*.yaml" -not -path "./.git/*" | sort | while read f; do
+              envsubst < "$f"
+              printf '\n---\n'
+            done
+      discover:
+        find:
+          glob: "**/.use-setenv-plugin"

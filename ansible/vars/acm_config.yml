@@ -1,0 +1,61 @@
+---
+# =============================================================================
+# ACM operator
+# =============================================================================
+acm_namespace: "open-cluster-management"
+# ACM 2.15 aligns with OCP 4.21 — verify current channel via:
+#   oc get packagemanifest advanced-cluster-management -o jsonpath='{.status.defaultChannel}'
+acm_channel: "release-2.15"
+acm_install_plan_approval: "Automatic"
+
+# =============================================================================
+# MultiClusterHub
+# =============================================================================
+mch_name: "multiclusterhub"
+mch_wait_retries: 30
+mch_wait_delay: 60
+
+# =============================================================================
+# AgentServiceConfig storage (for Assisted Installer service)
+# =============================================================================
+agent_service_config:
+  db_storage_size: "10Gi"
+  filesystem_storage_size: "20Gi"
+  image_storage_size: "20Gi"
+
+# =============================================================================
+# MultiClusterEngine
+# =============================================================================
+# ACM deploys MCE automatically; we patch it to ensure assisted-service is enabled.
+mce_name: "multiclusterengine"
+mce_wait_retries: 30
+mce_wait_delay: 30
+
+# =============================================================================
+# OpenShift GitOps (ArgoCD)
+# =============================================================================
+gitops_namespace: "openshift-gitops"
+# Verify current channel: oc get packagemanifest openshift-gitops-operator -o jsonpath='{.status.defaultChannel}'
+gitops_channel: "latest"
+gitops_install_plan_approval: "Automatic"
+
+# =============================================================================
+# GitOps repository
+# =============================================================================
+gitops_repo: "https://github.com/heatmiser/openshift-acm-app-of-apps"
+gitops_revision: "main"
+
+# =============================================================================
+# Vault (deployed on hub, external to managed clusters)
+# =============================================================================
+vault_namespace: "vault"
+vault_kv_mount: "secret"
+vault_hub_auth_mount: "hub"
+vault_hub_role: "hub-role"
+
+# =============================================================================
+# External Secrets Operator
+# =============================================================================
+eso_namespace: "external-secrets"
+eso_service_account: "external-secrets"
+eso_secret_store_name: "vault-backend"

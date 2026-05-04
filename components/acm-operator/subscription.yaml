@@ -1,0 +1,14 @@
+---
+# ACM channel tracks OCP version: OCP 4.21 → ACM 2.15.
+# Channel is kept as a literal here; bump alongside openshift_version.
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: advanced-cluster-management
+  namespace: open-cluster-management
+spec:
+  channel: release-2.15
+  installPlanApproval: Automatic
+  name: advanced-cluster-management
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace

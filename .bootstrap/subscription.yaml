@@ -1,0 +1,15 @@
+---
+# OpenShift GitOps operator subscription.
+# Applied via kubernetes.core.k8s template: so Jinja2 vars are substituted.
+# The operator installs cluster-wide and creates the openshift-gitops namespace.
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: openshift-gitops-operator
+  namespace: openshift-operators
+spec:
+  channel: "{{ gitops_channel }}"
+  installPlanApproval: "{{ gitops_install_plan_approval }}"
+  name: openshift-gitops-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace

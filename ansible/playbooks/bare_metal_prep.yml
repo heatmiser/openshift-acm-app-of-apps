@@ -1,0 +1,51 @@
+---
+# bare_metal_prep.yml
+#
+# Phase 1a: Prepare bare metal nodes for OpenShift installation.
+#
+# Plays (in order):
+#   1. localhost     — Template and generate the Agent-Based Installer ISO
+#   2. http_servers  — Stage the ISO on the HTTP server for iDRAC virtual media
+#   3. hub_nodes     — Mount the ISO as virtual media via iDRAC
+#
+# Prerequisites:
+#   - openshift-install binary at {{ openshift_install_binary }}
+#   - vars/vault_secrets.yml created and ansible-vault encrypted
+#   - HTTP server reachable and httpd running
+#   - iDRAC management network reachable from Ansible controller
+#
+# Usage:
+#   ansible-playbook playbooks/bare_metal_prep.yml --ask-vault-pass
+
+- name: "Generate Agent-Based Installer ISO"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - "../vars/acm_config.yml"
+    - "../vars/vault_secrets.yml"
+  tasks:
+    - name: "Include agent ISO generation tasks"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/generate_agent_iso.yml"
+
+- name: "Stage agent ISO on HTTP server"
+  hosts: http_servers
+  gather_facts: false
+  vars_files:
+    - "../vars/acm_config.yml"
+  tasks:
+    - name: "Include ISO staging tasks"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/iso_staging.yml"
+
+- name: "Mount agent ISO as virtual media via iDRAC"
+  hosts: hub_nodes
+  gather_facts: false
+  vars_files:
+    - "../vars/acm_config.yml"
+    - "../vars/vault_secrets.yml"
+  tasks:
+    - name: "Include BMC virtual media tasks"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/bmc_virtual_media.yml"

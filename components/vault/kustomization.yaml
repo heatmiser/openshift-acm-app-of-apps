@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Vault is deployed via the HashiCorp Helm chart pulled at kustomize build time.
+# Pin chartVersion here — bump to upgrade Vault.
+# The ArgoCD Application's targetRevision is set by the cluster-versions
+# replacement (git branch), which is independent of this chart version pin.
+helmCharts:
+  - name: vault
+    repo: https://helm.releases.hashicorp.com
+    version: 0.29.1
+    releaseName: vault
+    namespace: vault
+    valuesFile: values.yaml
+
+resources:
+  - namespace.yaml

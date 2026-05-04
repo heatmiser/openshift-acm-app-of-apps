@@ -1,0 +1,12 @@
+---
+collections:
+  - name: ansible.posix
+    version: ">=1.5.0"
+  - name: community.general
+    version: ">=9.0.0"
+  - name: kubernetes.core
+    version: ">=3.0.0"
+  - name: dellemc.openmanage
+    version: ">=9.0.0"
+  - name: community.crypto
+    version: ">=2.0.0"

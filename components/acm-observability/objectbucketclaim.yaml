@@ -1,0 +1,13 @@
+---
+# ObjectBucketClaim provisions an S3-compatible bucket via the ODF/NooBaa
+# operator for Thanos object storage. The claim name and storage class must
+# match what MultiClusterObservability references in its storageConfig.
+# Replace storageClassName with the appropriate ODF or external S3 class.
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: thanos-bc
+  namespace: open-cluster-management-observability
+spec:
+  generateBucketName: thanos
+  storageClassName: openshift-storage.noobaa.io

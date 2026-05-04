@@ -1,0 +1,38 @@
+---
+# site.yml — Master orchestration playbook
+#
+# Runs all phases in sequence to bring up a fully configured OpenShift ACM hub
+# cluster from powered-off bare metal nodes.
+#
+# Phases:
+#   Phase 1a — bare_metal_prep.yml    : ISO generation, HTTP staging, virtual media
+#   Phase 1b — bare_metal_install.yml : Power cycle nodes, wait for install-complete
+#   Phase 2a — acm_hub_bootstrap.yml  : Deploy GitOps operator, ArgoCD, root app
+#   Phase 2b — acm_hub_configure.yml  : Wait for ACM/Vault/ESO, init Vault
+#
+# For partial runs, execute the individual playbooks directly. Each playbook is
+# idempotent and can be re-run safely if interrupted.
+#
+# Prerequisites:
+#   1. vars/vault_secrets.yml created:
+#        ansible-vault create vars/vault_secrets.yml
+#   2. values-secret.yaml populated from templates/values-secret.yaml.template
+#   3. openshift-install binary available at {{ openshift_install_binary }}
+#   4. Ansible collections installed:
+#        ansible-galaxy collection install -r requirements.yml
+#
+# Usage:
+#   ansible-playbook playbooks/site.yml --ask-vault-pass
+#   ansible-playbook playbooks/site.yml --vault-password-file ../.vault_pass
+
+- name: "Phase 1a: Generate agent ISO, stage on HTTP server, mount virtual media"
+  ansible.builtin.import_playbook: bare_metal_prep.yml
+
+- name: "Phase 1b: Power cycle hub nodes and wait for OpenShift installation"
+  ansible.builtin.import_playbook: bare_metal_install.yml
+
+- name: "Phase 2a: Bootstrap OpenShift GitOps operator and ArgoCD"
+  ansible.builtin.import_playbook: acm_hub_bootstrap.yml
+
+- name: "Phase 2b: Configure ACM hub cluster and initialize HashiCorp Vault"
+  ansible.builtin.import_playbook: acm_hub_configure.yml

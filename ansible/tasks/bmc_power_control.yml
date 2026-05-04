@@ -1,0 +1,54 @@
+---
+# === BMC POWER CONTROL ===
+# Sets a one-time UEFI CD-ROM boot override via iDRAC, then power-cycles each
+# node. Uses a two-step approach: attempt graceful restart first; if the node
+# was already powered off, send a power-on instead.
+#
+# Boot override is set to "once" so subsequent reboots use the normal boot order
+# (hard drive), allowing the installed OS to come up automatically.
+#
+# Runs in hub_nodes play context; all tasks delegate to localhost.
+
+- name: "Set one-time UEFI boot from virtual CD-ROM"
+  dellemc.openmanage.idrac_boot:
+    idrac_ip: "{{ idrac_ip }}"
+    idrac_user: "{{ idrac_user }}"
+    idrac_password: "{{ idrac_password }}"
+    validate_certs: false
+    boot_source_override_mode: "uefi"
+    boot_source_override_target: "cd"
+    boot_source_override_enabled: "once"
+  delegate_to: localhost
+  no_log: true
+
+# GracefulRestart is attempted first; ignore_errors handles the already-off case
+- name: "Attempt graceful restart"
+  community.general.redfish_command:
+    category: Systems
+    command: PowerGracefulRestart
+    baseuri: "{{ idrac_ip }}"
+    username: "{{ idrac_user }}"
+    password: "{{ idrac_password }}"
+    validate_certs: false
+  delegate_to: localhost
+  register: graceful_restart_result
+  ignore_errors: true
+  no_log: true
+
+- name: "Power on node if it was already powered off"
+  community.general.redfish_command:
+    category: Systems
+    command: PowerOn
+    baseuri: "{{ idrac_ip }}"
+    username: "{{ idrac_user }}"
+    password: "{{ idrac_password }}"
+    validate_certs: false
+  delegate_to: localhost
+  when: graceful_restart_result is failed
+  no_log: true
+
+- name: "Confirm power action completed"
+  ansible.builtin.debug:
+    msg: >-
+      Power action completed for {{ inventory_hostname }} (iDRAC {{ idrac_ip }}).
+      Node is booting from virtual CD-ROM.

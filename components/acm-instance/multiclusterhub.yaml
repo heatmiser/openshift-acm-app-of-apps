@@ -1,0 +1,22 @@
+---
+# MultiClusterHub CR — triggers ACM/MCE operator to deploy the full hub stack.
+# Placed at sync wave 15 so the ACM subscription (wave 5) and its CSV are
+# Running before this CR is applied.
+#
+# availabilityConfig: High deploys 2 replicas of hub components for HA.
+# Requires all 3 hub nodes to schedule correctly.
+apiVersion: operator.open-cluster-management.io/v1
+kind: MultiClusterHub
+metadata:
+  name: multiclusterhub
+  namespace: open-cluster-management
+  annotations:
+    installer.open-cluster-management.io/mce-subscription-spec: |
+      channel: stable-2.9
+      installPlanApproval: Automatic
+      name: multicluster-engine
+      source: redhat-operators
+      sourceNamespace: openshift-marketplace
+spec:
+  availabilityConfig: High
+  disableHubSelfManagement: false

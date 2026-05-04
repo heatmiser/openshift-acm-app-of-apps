@@ -1,0 +1,41 @@
+---
+# AgentServiceConfig enables the Assisted Installer service (part of MCE).
+# Required for hub-managed bare metal cluster deployments using the
+# agent-based installer workflow. Storage sizes should be tuned to the
+# number of clusters and ISO images expected in the environment.
+#
+# databaseStorage: PostgreSQL data for the assisted-service database.
+# filesystemStorage: Agent ISOs and other artifacts served to nodes.
+# imageStorage: OS images cached from the Red Hat image mirror.
+apiVersion: agent-install.openshift.io/v1beta1
+kind: AgentServiceConfig
+metadata:
+  name: agent
+  namespace: multicluster-engine
+spec:
+  databaseStorage:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 10Gi
+
+  filesystemStorage:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 100Gi
+
+  imageStorage:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 50Gi
+
+  osImages:
+    - openshiftVersion: "4.21"
+      version: "421.9.202505010025-0"
+      url: "https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.21/latest/rhcos-live.x86_64.iso"
+      cpuArchitecture: x86_64

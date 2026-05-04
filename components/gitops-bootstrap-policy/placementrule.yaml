@@ -1,0 +1,18 @@
+---
+# PlacementRule selects all managed clusters except the hub itself.
+# Add clusterConditions or matchLabels to restrict to a subset of spokes.
+apiVersion: apps.open-cluster-management.io/v1
+kind: PlacementRule
+metadata:
+  name: placement-gitops-bootstrap
+  namespace: open-cluster-management
+spec:
+  clusterConditions:
+    - status: "True"
+      type: ManagedClusterConditionAvailable
+  clusterSelector:
+    matchExpressions:
+      - key: local-cluster
+        operator: NotIn
+        values:
+          - "true"

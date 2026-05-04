@@ -1,0 +1,13 @@
+# ESO Helm chart values.
+# installCRDs: true ensures the CRDs are present before the controller starts.
+# Webhook and cert-controller are enabled for production use.
+
+installCRDs: true
+
+replicaCount: 2
+
+webhook:
+  replicaCount: 2
+
+certController:
+  replicaCount: 2

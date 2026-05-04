@@ -1,0 +1,12 @@
+---
+# =============================================================================
+# HTTP staging server
+# =============================================================================
+# Optionally stage the agent ISO in tmpfs (/dev/shm) for faster iDRAC virtual
+# media streaming, symlinked from the docroot. Set true only if the server has
+# sufficient RAM (ISO is ~1.3GB for OCP 4.21).
+iso_use_tmpfs: false
+tmpfs_path: "/dev/shm/ocp"
+
+ansible_user: "{{ vault_http_server_user }}"
+become: true

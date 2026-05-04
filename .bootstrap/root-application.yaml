@@ -1,0 +1,39 @@
+---
+# Root ArgoCD Application — entry point for the app-of-apps cascade.
+# Applied via kubernetes.core.k8s template: so Jinja2 vars are substituted.
+#
+# Points ArgoCD at clusters/{{ cluster_name }}/ in this repository. The
+# kustomization.yaml at that path renders the argocd-app-of-app Helm chart
+# with hub-specific values, generating one ArgoCD Application per component.
+#
+# project: default is used here because the root application must exist before
+# the custom AppProject (defined in the app-of-apps values) can be created.
+# All child applications will use the custom cluster-config AppProject.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-application
+  namespace: "{{ gitops_namespace }}"
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  destination:
+    namespace: "{{ gitops_namespace }}"
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: "clusters/{{ cluster_name }}"
+    repoURL: "{{ gitops_repo }}"
+    targetRevision: "{{ gitops_revision }}"
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

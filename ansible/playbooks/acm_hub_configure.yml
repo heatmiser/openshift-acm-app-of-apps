@@ -1,0 +1,169 @@
+---
+# acm_hub_configure.yml
+#
+# Phase 2b: Wait for ArgoCD-managed components to reach ready state, then perform
+# the Vault initialization that cannot be automated via GitOps.
+#
+# ArgoCD deploys components in sync-wave order. This playbook waits for the waves
+# that must complete before Vault can be initialized:
+#
+#   Wave 5  → ACM operator subscription + Vault Helm release
+#   Wave 6  → ESO Helm release (ClusterSecretStore cannot connect until Vault is ready)
+#   Wave 15 → MultiClusterHub CR (requires ACM operator ready)
+#
+# After Vault is initialized and secrets are loaded, the ESO ClusterSecretStore
+# becomes valid and all ExternalSecret CRs begin syncing.
+#
+# Run after acm_hub_bootstrap.yml. The values-secret.yaml file must exist and
+# be populated from ansible/templates/values-secret.yaml.template before running.
+#
+# Usage:
+#   ansible-playbook playbooks/acm_hub_configure.yml
+
+# =============================================================================
+# Play 1: Wait for ACM MultiClusterHub and MultiClusterEngine
+# =============================================================================
+- name: "Wait for ACM to reach running state"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  environment:
+    KUBECONFIG: "{{ install_dir }}/auth/kubeconfig"
+  vars_files:
+    - "../vars/acm_config.yml"
+  tasks:
+    - name: "Wait for ACM operator CSV to succeed"
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: ClusterServiceVersion
+        namespace: "{{ acm_namespace }}"
+      register: acm_csv_result
+      until: >-
+        acm_csv_result.resources | length > 0 and
+        (acm_csv_result.resources
+          | selectattr('status.phase', 'defined')
+          | selectattr('status.phase', 'equalto', 'Succeeded')
+          | list | length > 0)
+      retries: 30
+      delay: 20
+
+    - name: "Wait for MultiClusterHub to be running"
+      kubernetes.core.k8s_info:
+        api_version: operator.open-cluster-management.io/v1
+        kind: MultiClusterHub
+        name: "{{ mch_name }}"
+        namespace: "{{ acm_namespace }}"
+      register: mch_status_result
+      until: >-
+        mch_status_result.resources | length > 0 and
+        (mch_status_result.resources[0].status.phase | default('') == 'Running')
+      retries: "{{ mch_wait_retries }}"
+      delay: "{{ mch_wait_delay }}"
+
+    # ACM automatically creates MCE; patch it to enable the Assisted Installer
+    # service required for agent-based managed cluster provisioning.
+    - name: "Enable assisted-service on MultiClusterEngine"
+      kubernetes.core.k8s:
+        state: patched
+        api_version: multicluster.openshift.io/v1alpha1
+        kind: MultiClusterEngine
+        name: "{{ mce_name }}"
+        definition:
+          spec:
+            overrides:
+              components:
+                - name: assisted-service
+                  enabled: true
+
+    - name: "Wait for MultiClusterEngine to be available"
+      kubernetes.core.k8s_info:
+        api_version: multicluster.openshift.io/v1alpha1
+        kind: MultiClusterEngine
+        name: "{{ mce_name }}"
+      register: mce_status_result
+      until: >-
+        mce_status_result.resources | length > 0 and
+        (mce_status_result.resources[0].status.phase | default('') == 'Available')
+      retries: "{{ mce_wait_retries }}"
+      delay: "{{ mce_wait_delay }}"
+
+# =============================================================================
+# Play 2: Initialize HashiCorp Vault
+# =============================================================================
+- name: "Initialize HashiCorp Vault"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  environment:
+    KUBECONFIG: "{{ install_dir }}/auth/kubeconfig"
+  vars_files:
+    - "../vars/acm_config.yml"
+  tasks:
+    - name: "Confirm values-secret.yaml exists"
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../../values-secret.yaml"
+      register: values_secret_stat
+
+    - name: "Fail if values-secret.yaml is missing"
+      ansible.builtin.fail:
+        msg: >-
+          values-secret.yaml not found. Copy and populate
+          ansible/templates/values-secret.yaml.template before running this playbook.
+      when: not values_secret_stat.stat.exists
+
+    - name: "Wait for Vault pod to be running and ready"
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ vault_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/name=vault"
+          - "vault-active=true"
+      register: vault_pod_result
+      until: >-
+        vault_pod_result.resources | length > 0 and
+        (vault_pod_result.resources[0].status.phase | default('') == 'Running') and
+        (vault_pod_result.resources[0].status.containerStatuses | default([])
+          | selectattr('ready', 'equalto', true) | list | length > 0)
+      retries: 30
+      delay: 20
+
+    - name: "Include Vault initialization tasks"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/vault_init.yml"
+
+# =============================================================================
+# Play 3: Confirm ESO ClusterSecretStore is valid post-Vault init
+# =============================================================================
+- name: "Verify ESO ClusterSecretStore is ready"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  environment:
+    KUBECONFIG: "{{ install_dir }}/auth/kubeconfig"
+  vars_files:
+    - "../vars/acm_config.yml"
+  tasks:
+    - name: "Wait for ClusterSecretStore to report Ready"
+      kubernetes.core.k8s_info:
+        api_version: external-secrets.io/v1beta1
+        kind: ClusterSecretStore
+        name: "{{ eso_secret_store_name }}"
+      register: css_result
+      until: >-
+        css_result.resources | length > 0 and
+        (css_result.resources[0].status.conditions | default([])
+          | selectattr('type', 'equalto', 'Ready')
+          | selectattr('status', 'equalto', 'True')
+          | list | length > 0)
+      retries: 20
+      delay: 15
+
+    - name: "Hub cluster configuration complete"
+      ansible.builtin.debug:
+        msg:
+          - "ACM MultiClusterHub: Running"
+          - "ACM MultiClusterEngine: Available (assisted-service enabled)"
+          - "HashiCorp Vault: Initialized, unsealed, secrets loaded"
+          - "ESO ClusterSecretStore '{{ eso_secret_store_name }}': Ready"
+          - "ArgoCD app-of-apps cascade is managing ongoing cluster configuration."

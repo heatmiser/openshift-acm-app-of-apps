@@ -1,0 +1,33 @@
+# Secrets — never commit
+values-secret.yaml
+*.vault_pass
+vault_pass
+vaultkeys.json
+
+# OpenShift install artifacts
+ansible/install/
+auth/
+*.kubeconfig
+kubeconfig
+
+# Agent ISO (generated artifact)
+*.iso
+
+# Ansible artifacts
+*.retry
+.cache/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Claude Code local settings (project-specific AI config, not for committing)
+.claude/
+
+# Editor
+.vscode/settings.json
+*.swp
+*.swo

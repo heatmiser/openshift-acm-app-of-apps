@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# External Secrets Operator pulled from the ESO Helm chart.
+# The ClusterSecretStore (vault-backend) is applied alongside so ESO can
+# begin syncing secrets as soon as Vault is initialized by vault_init.yml.
+helmCharts:
+  - name: external-secrets
+    repo: https://charts.external-secrets.io
+    version: 0.14.4
+    releaseName: external-secrets
+    namespace: external-secrets
+    valuesFile: values.yaml
+
+resources:
+  - namespace.yaml
+  - clustersecretstore.yaml

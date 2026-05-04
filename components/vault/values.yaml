@@ -1,0 +1,62 @@
+# Vault Helm chart values for hub-cluster deployment.
+# Single-node dev mode is NOT used — this is a production-aligned HA-capable
+# config with 3 replicas (one per hub node) using integrated Raft storage.
+# Vault is initialized and unsealed by ansible/tasks/vault_init.yml.
+
+global:
+  openshift: true
+
+server:
+  # HA with integrated Raft — requires all 3 hub nodes present.
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+      setNodeId: true
+      config: |
+        ui = true
+
+        listener "tcp" {
+          tls_disable = 1
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+          telemetry {
+            unauthenticated_metrics_access = "true"
+          }
+        }
+
+        storage "raft" {
+          path = "/vault/data"
+        }
+
+        telemetry {
+          prometheus_retention_time = "30s"
+          disable_hostname = true
+        }
+
+        service_registration "kubernetes" {}
+
+  # Route-based ingress is handled by OpenShift; skip the Ingress object.
+  ingress:
+    enabled: false
+
+  # Vault data persisted across pod restarts.
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: null
+
+  # Vault audit log storage.
+  auditStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: null
+
+  # Required for OpenShift SCC compatibility.
+  standalone:
+    enabled: false
+
+ui:
+  enabled: true
+  serviceType: ClusterIP

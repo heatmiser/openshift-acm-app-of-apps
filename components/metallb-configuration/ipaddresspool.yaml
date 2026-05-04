@@ -1,0 +1,12 @@
+---
+# IP address pool for MetalLB LoadBalancer services on the hub cluster.
+# Adjust the address range to match the infrastructure reserved range.
+# Multiple pools can be added here for different service classes.
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: hub-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.1.200-192.168.1.220

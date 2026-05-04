@@ -1,0 +1,10 @@
+apiVersion: v2
+name: argocd-app-of-app
+description: >-
+  Generates ArgoCD Application and AppProject resources from a structured
+  values map. Used as the hub for the app-of-apps pattern — the root ArgoCD
+  Application points at clusters/{name}/ which renders this chart to produce
+  all component Applications in sync-wave dependency order.
+type: application
+version: 0.1.0
+appVersion: "1.0"

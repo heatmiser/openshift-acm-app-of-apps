@@ -1,0 +1,49 @@
+# clusters/hub/kustomization.yaml
+#
+# Builds the hub cluster's ArgoCD Application and AppProject manifests.
+#
+# The HelmChartInflationGenerator renders the argocd-app-of-app Helm chart
+# with values merged from two files:
+#   1. ../../groups/all/values.yaml  — shared operators and AppProject
+#   2. values.yaml                   — hub-specific applications
+#
+# additionalValuesFiles is processed in order; later files win on key
+# collisions (cluster values override group defaults for the same key).
+#
+# The replacement block reads data.hub from the cluster-versions ConfigMap
+# and patches spec.source.targetRevision in every generated Application so
+# that the hub cluster tracks the branch declared in cluster-versions.yaml.
+#
+# kustomize build must be called with:
+#   --enable-helm --load-restrictor=LoadRestrictionsNone
+# ArgoCD's kustomizeBuildOptions in the ArgoCD CR supplies those flags.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../cluster-versions.yaml
+
+generators:
+  - |-
+    apiVersion: builtin
+    kind: HelmChartInflationGenerator
+    metadata:
+      name: hub-apps
+    chartHome: ../../.helm-charts
+    chartName: argocd-app-of-app
+    releaseName: hub
+    valuesFile: values.yaml
+    additionalValuesFiles:
+      - ../../groups/all/values.yaml
+    includeCRDs: false
+
+replacements:
+  - source:
+      kind: ConfigMap
+      name: cluster-versions
+      fieldPath: data.hub
+    targets:
+      - select:
+          kind: Application
+        fieldPaths:
+          - spec.source.targetRevision

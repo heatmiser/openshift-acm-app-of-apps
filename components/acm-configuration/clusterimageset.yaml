@@ -1,0 +1,10 @@
+---
+# ClusterImageSet defines the OCP release image available for spoke cluster
+# deployments. The releaseImage must match the version declared in the
+# AgentServiceConfig osImages list above.
+apiVersion: hive.openshift.io/v1
+kind: ClusterImageSet
+metadata:
+  name: openshift-4.21
+spec:
+  releaseImage: quay.io/openshift-release-dev/ocp-release:4.21.0-x86_64

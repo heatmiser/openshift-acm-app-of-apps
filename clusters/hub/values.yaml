@@ -1,0 +1,96 @@
+# clusters/hub/values.yaml
+#
+# Hub cluster ArgoCD applications. Merged with groups/all/values.yaml by the
+# HelmChartInflationGenerator. Hub-specific entries here add to the shared
+# operators defined in groups/all.
+#
+# All targetRevision values are overwritten at kustomize build time by the
+# Kustomize replacement that reads clusters/cluster-versions.yaml (data.hub).
+# Set targetRevision here only for documentation; the replacement wins.
+#
+# Sync wave ordering:
+#   5  — Operator subscriptions
+#   6  — Operator configuration
+#   15 — Operator instances / CRs
+#   25 — Complex / dependent configuration
+
+applications:
+
+  # ---------------------------------------------------------------------------
+  # Wave 5 — Operator subscriptions
+  # ---------------------------------------------------------------------------
+
+  acm-operator:
+    path: components/acm-operator
+    syncWave: "5"
+    destination:
+      namespace: open-cluster-management
+
+  # Vault Helm release — chart version pinned in components/vault/kustomization.yaml.
+  # ArgoCD renders components/vault/ as a Kustomize source (which uses helmCharts:
+  # internally to pull the HashiCorp Vault chart from helm.releases.hashicorp.com).
+  vault:
+    path: components/vault
+    syncWave: "5"
+    destination:
+      namespace: vault
+
+  # ---------------------------------------------------------------------------
+  # Wave 6 — Operator configuration
+  # ---------------------------------------------------------------------------
+
+  # ESO Helm release + ClusterSecretStore pointing at Vault.
+  # ESO will report NotReady until Vault is initialized by acm_hub_configure.yml.
+  eso:
+    path: components/eso
+    syncWave: "6"
+    destination:
+      namespace: external-secrets
+
+  metallb-configuration:
+    path: components/metallb-configuration
+    syncWave: "6"
+    destination:
+      namespace: metallb-system
+
+  nmstate-configuration:
+    path: components/nmstate-configuration
+    syncWave: "6"
+    destination:
+      namespace: openshift-nmstate
+
+  # ---------------------------------------------------------------------------
+  # Wave 15 — Operator instances / CRs
+  # ---------------------------------------------------------------------------
+
+  acm-instance:
+    path: components/acm-instance
+    syncWave: "15"
+    destination:
+      namespace: open-cluster-management
+
+  # ACM policy that bootstraps OpenShift GitOps on managed child clusters.
+  # Placed at wave 15 so it deploys after the MultiClusterHub is Running.
+  gitops-bootstrap-policy:
+    path: components/gitops-bootstrap-policy
+    syncWave: "15"
+    destination:
+      namespace: open-cluster-management
+
+  # ---------------------------------------------------------------------------
+  # Wave 25 — Complex / dependent configuration
+  # ---------------------------------------------------------------------------
+
+  # AgentServiceConfig, ClusterImageSet, Hive config — requires MCE available.
+  acm-configuration:
+    path: components/acm-configuration
+    syncWave: "25"
+    destination:
+      namespace: open-cluster-management
+
+  # ACM observability stack — requires MultiClusterHub Running and object storage.
+  acm-observability:
+    path: components/acm-observability
+    syncWave: "25"
+    destination:
+      namespace: open-cluster-management-observability

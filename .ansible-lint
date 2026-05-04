@@ -1,0 +1,11 @@
+---
+profile: production
+
+warn_list:
+  - yaml[line-length]
+
+skip_list: []
+
+exclude_paths:
+  - .git/
+  - .venv/

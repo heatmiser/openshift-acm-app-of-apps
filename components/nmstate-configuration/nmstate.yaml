@@ -1,0 +1,10 @@
+---
+# NMState operator instance. Creating this CR causes the operator to deploy
+# the nmstate handler DaemonSet on all nodes. No additional configuration
+# is needed at the operator level — NMStatePolicy CRs drive node network config.
+apiVersion: nmstate.io/v1
+kind: NMState
+metadata:
+  name: nmstate
+  namespace: openshift-nmstate
+spec: {}

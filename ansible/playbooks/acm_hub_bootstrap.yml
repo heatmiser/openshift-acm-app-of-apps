@@ -1,0 +1,41 @@
+---
+# acm_hub_bootstrap.yml
+#
+# Phase 2a: Bootstrap OpenShift GitOps and ArgoCD on the newly installed hub cluster.
+#
+# Applies the .bootstrap/ manifests in order:
+#   1. OpenShift GitOps operator subscription
+#   2. ArgoCD cluster-admin role binding
+#   3. ArgoCD instance (with envsubst sidecar for ${VAR} substitution in manifests)
+#   4. Root ArgoCD Application → clusters/hub
+#
+# After this playbook completes, the ArgoCD app-of-apps cascade begins, deploying
+# all wave-ordered components (ACM, Vault, ESO, MetalLB, NMState, etc.) from Git.
+#
+# Run after bare_metal_install.yml has completed successfully.
+#
+# Usage:
+#   ansible-playbook playbooks/acm_hub_bootstrap.yml
+
+- name: "Bootstrap OpenShift GitOps and ArgoCD on hub cluster"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  environment:
+    KUBECONFIG: "{{ install_dir }}/auth/kubeconfig"
+  vars_files:
+    - "../vars/acm_config.yml"
+  tasks:
+    - name: "Verify cluster API is reachable"
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Namespace
+        name: default
+      register: api_check
+      until: api_check.resources | length > 0
+      retries: 10
+      delay: 15
+
+    - name: "Include GitOps bootstrap tasks"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/gitops_bootstrap.yml"

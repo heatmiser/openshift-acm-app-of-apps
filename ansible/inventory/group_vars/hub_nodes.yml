@@ -1,0 +1,34 @@
+---
+# =============================================================================
+# Hub cluster identity
+# =============================================================================
+cluster_name: "hub"
+base_domain: "example.com"
+
+# =============================================================================
+# Agent-based installer network config
+# =============================================================================
+# The rendezvous IP must be the IP of one of the hub nodes (typically node1).
+# The installer uses it as a coordination point during bootstrap.
+rendezvous_ip: "192.168.1.10"
+
+machine_network_cidr: "192.168.1.0/24"
+cluster_network_cidr: "10.128.0.0/14"
+cluster_network_host_prefix: 23
+service_network_cidr: "172.30.0.0/16"
+network_type: "OVNKubernetes"
+
+# platform: none — agent-based install on baremetal with no provider integration
+platform_type: "none"
+
+# =============================================================================
+# Node defaults (override per-host in host_vars if hardware differs)
+# =============================================================================
+node_role: "master"
+node_interface: "eno1"
+
+# =============================================================================
+# Post-install SSH
+# =============================================================================
+ansible_user: "ansiblerunner"
+become: true

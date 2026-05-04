@@ -1,0 +1,36 @@
+{{ ansible_managed | comment }}
+---
+apiVersion: v1alpha1
+kind: AgentConfig
+metadata:
+  name: {{ cluster_name }}
+rendezvousIP: {{ rendezvous_ip }}
+hosts:
+{% for hostname in groups['hub_nodes'] %}
+{% set h = hostvars[hostname]['node'] %}
+  - hostname: {{ h.hostname }}.{{ base_domain }}
+    role: {{ h.role }}
+    interfaces:
+      - name: {{ h.interface }}
+        macAddress: {{ h.mac }}
+    networkConfig:
+      interfaces:
+        - name: {{ h.interface }}
+          type: ethernet
+          state: up
+          ipv4:
+            enabled: true
+            address:
+              - ip: {{ h.ipv4_address }}
+                prefix-length: {{ h.ipv4_prefix }}
+            dhcp: false
+      dns-resolver:
+        config:
+          server:
+            - {{ h.ipv4_dns }}
+      routes:
+        config:
+          - destination: 0.0.0.0/0
+            next-hop-address: {{ h.ipv4_gateway }}
+            next-hop-interface: {{ h.interface }}
+{% endfor %}
