@@ -225,7 +225,7 @@ openshift-acm-app-of-apps/
 | Document | Contents |
 |----------|----------|
 | [Hub Installation Guide](docs/hub-installation.md) | Full walkthrough: hardware, network, variables, playbook execution, troubleshooting |
-| [Child Cluster Onboarding](docs/child-cluster-onboarding.md) | Adding ACM-managed bare metal spoke clusters |
+| [Spoke Cluster Reference](docs/spoke-cluster-reference.md) | ACM/Hive resource model, prerequisites, planning, monitoring, verification, and GitOps delivery for spoke clusters |
 | [GitOps Delivery Models](docs/gitops-delivery-models.md) | Decentralized, Centralized, and Hybrid model overview, pros/cons, decision guide, and implementation notes |
 | [Cluster Onboarding Pipeline](docs/cluster-onboarding-pipeline.md) | Automated end-to-end onboarding pipeline: hardware discovery, manifest generation, Git strategy, ArgoCD sync strategy |
 | [Variables Reference](docs/variables-reference.md) | All configurable variables, defaults, and descriptions |
