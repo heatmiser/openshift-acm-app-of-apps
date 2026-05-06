@@ -1,0 +1,183 @@
+---
+# === GIT COMMIT (CLUSTER DEFINITION) ===
+# Commit the rendered cluster manifests and patches to Git.
+# Supports two strategies controlled by cluster_onboard_git_strategy:
+#   direct    — commit and push directly to main
+#   branch_pr — create feature branch, push, open GitHub PR
+
+- name: "Configure git identity for automated commit"
+  ansible.builtin.command:
+    cmd: "git config user.email 'acm-pipeline@{{ cluster.base_domain }}'"
+    chdir: "{{ playbook_dir }}/../../"
+  changed_when: true
+
+- name: "Configure git user name for automated commit"
+  ansible.builtin.command:
+    cmd: "git config user.name 'ACM Onboarding Pipeline'"
+    chdir: "{{ playbook_dir }}/../../"
+  changed_when: true
+
+# --- direct strategy ---
+- name: "Pull latest main before commit (direct strategy)"
+  ansible.builtin.command:
+    cmd: "git pull --rebase origin main"
+    chdir: "{{ playbook_dir }}/../../"
+  changed_when: true
+  when: cluster_onboard_git_strategy == "direct"
+
+- name: "Stage cluster manifests (direct strategy)"
+  ansible.builtin.command:
+    cmd: >-
+      git add
+      clusters/{{ cluster.name }}/
+      clusters/cluster-versions.yaml
+      clusters/hub/values.yaml
+    chdir: "{{ playbook_dir }}/../../"
+  changed_when: true
+  when: cluster_onboard_git_strategy == "direct"
+
+- name: "Commit cluster definition to main (direct strategy)"
+  ansible.builtin.command:
+    cmd: >-
+      git commit -m
+      "Add {{ cluster.name }} cluster definition [automated onboarding]"
+    chdir: "{{ playbook_dir }}/../../"
+  changed_when: true
+  when: cluster_onboard_git_strategy == "direct"
+
+# Retry push loop handles rare simultaneous pipeline runs on the same repo.
+- name: "Push to main with conflict retry (direct strategy)"
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      for attempt in 1 2 3; do
+        git push origin main && exit 0
+        echo "Push attempt ${attempt} failed — rebasing and retrying"
+        git pull --rebase origin main
+      done
+      echo "Push failed after 3 attempts"
+      exit 1
+    chdir: "{{ playbook_dir }}/../../"
+  changed_when: true
+  when: cluster_onboard_git_strategy == "direct"
+
+# --- branch_pr strategy ---
+- name: "Create feature branch (branch_pr strategy)"
+  ansible.builtin.command:
+    cmd: >-
+      git checkout -b
+      {{ cluster_onboard_git_branch_prefix }}/{{ cluster.name }}-{{ ansible_date_time.date }}
+    chdir: "{{ playbook_dir }}/../../"
+  changed_when: true
+  when: cluster_onboard_git_strategy == "branch_pr"
+
+- name: "Stage cluster manifests (branch_pr strategy)"
+  ansible.builtin.command:
+    cmd: >-
+      git add
+      clusters/{{ cluster.name }}/
+      clusters/cluster-versions.yaml
+      clusters/hub/values.yaml
+    chdir: "{{ playbook_dir }}/../../"
+  changed_when: true
+  when: cluster_onboard_git_strategy == "branch_pr"
+
+- name: "Commit cluster definition to feature branch (branch_pr strategy)"
+  ansible.builtin.command:
+    cmd: >-
+      git commit -m
+      "Add {{ cluster.name }} cluster definition [automated onboarding]"
+    chdir: "{{ playbook_dir }}/../../"
+  changed_when: true
+  when: cluster_onboard_git_strategy == "branch_pr"
+
+- name: "Push feature branch to origin (branch_pr strategy)"
+  ansible.builtin.command:
+    cmd: >-
+      git push origin
+      {{ cluster_onboard_git_branch_prefix }}/{{ cluster.name }}-{{ ansible_date_time.date }}
+    chdir: "{{ playbook_dir }}/../../"
+  changed_when: true
+  when: cluster_onboard_git_strategy == "branch_pr"
+
+# Retrieve GitHub PAT from Vault for PR creation.
+- name: "Retrieve GitHub PAT from Vault (branch_pr strategy)"
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/secret/data/hub/gitops-repo"
+    method: GET
+    headers:
+      X-Vault-Token: "{{ vault_root_token }}"
+    validate_certs: false
+    status_code: 200
+  register: _vault_github_pat
+  no_log: true
+  when: cluster_onboard_git_strategy == "branch_pr"
+
+- name: "Open pull request via GitHub API (branch_pr strategy)"
+  ansible.builtin.uri:
+    url: "https://api.github.com/repos/{{ github_org }}/{{ github_repo }}/pulls"
+    method: POST
+    headers:
+      Authorization: "token {{ _vault_github_pat.json.data.data.token }}"
+      Accept: "application/vnd.github+json"
+      X-GitHub-Api-Version: "2022-11-28"
+    body_format: json
+    body:
+      title: >-
+        Add {{ cluster.name }} cluster definition [automated onboarding]
+      head: >-
+        {{ cluster_onboard_git_branch_prefix }}/{{ cluster.name }}-{{ ansible_date_time.date }}
+      base: "main"
+      body: >-
+        Automated cluster onboarding pipeline generated this PR on
+        {{ ansible_date_time.iso8601 }}.\n\n
+        Cluster: {{ cluster.name }}.{{ cluster.base_domain }}\n
+        OCP version: {{ cluster.ocp_version }}\n
+        Machine network: {{ cluster.machine_network_cidr }}\n\n
+        Review the rendered manifests in clusters/{{ cluster.name }}/ and merge
+        to trigger ArgoCD reconciliation.
+    status_code: 201
+  register: _github_pr
+  no_log: true
+  when: cluster_onboard_git_strategy == "branch_pr"
+
+- name: "Pull request created"
+  ansible.builtin.debug:
+    msg: "PR opened: {{ _github_pr.json.html_url }}"
+  when:
+    - cluster_onboard_git_strategy == "branch_pr"
+    - _github_pr is defined
+
+# Wait for merge — either poll GitHub API or pause for manual merge.
+- name: "Poll GitHub API until PR is merged (branch_pr auto_merge)"
+  ansible.builtin.uri:
+    url: "https://api.github.com/repos/{{ github_org }}/{{ github_repo }}/pulls/{{ _github_pr.json.number }}"
+    method: GET
+    headers:
+      Authorization: "token {{ _vault_github_pat.json.data.data.token }}"
+      Accept: "application/vnd.github+json"
+    status_code: 200
+  register: _pr_status
+  until: _pr_status.json.merged == true
+  retries: 120
+  delay: 30
+  no_log: true
+  when:
+    - cluster_onboard_git_strategy == "branch_pr"
+    - cluster_onboard_git_pr_auto_merge | bool
+
+- name: "Pause for manual PR review and merge"
+  ansible.builtin.pause:
+    prompt: >-
+      Review and merge the PR at {{ _github_pr.json.html_url }}.
+      Press ENTER to continue after the PR is merged.
+  when:
+    - cluster_onboard_git_strategy == "branch_pr"
+    - not (cluster_onboard_git_pr_auto_merge | bool)
+
+- name: "Switch back to main after PR merge (branch_pr strategy)"
+  ansible.builtin.command:
+    cmd: "git checkout main && git pull origin main"
+    chdir: "{{ playbook_dir }}/../../"
+  changed_when: true
+  when: cluster_onboard_git_strategy == "branch_pr"

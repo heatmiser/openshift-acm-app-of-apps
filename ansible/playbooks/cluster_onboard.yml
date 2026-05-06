@@ -1,0 +1,170 @@
+---
+# cluster_onboard.yml
+#
+# Automated end-to-end onboarding of a new bare metal OpenShift cluster into
+# ACM management. Driven by a single cluster definition YAML file.
+#
+# Pipeline steps:
+#   0. Pre-flight checks         — DNS and CIDR conflict validation
+#   1. BMC Redfish discovery     — serial numbers and NIC MACs
+#   2. Live ISO boot + queue     — boot nodes, drain registration callbacks
+#   3. Facts merge               — correlate Redfish + OS facts, validate HW
+#   4. Template rendering        — generate cluster manifests
+#   5. Git + Vault (conditional) — strategy-dependent ordering
+#   6. ArgoCD sync               — trigger or poll
+#   7. Wait for InfraEnv ISO     — poll for isoDownloadURL
+#   8. BMC ISO mount + boot      — mount discovery ISO and install cluster
+#
+# Usage:
+#   ansible-playbook playbooks/cluster_onboard.yml \
+#     -e cluster_config=vars/clusters/spoke1.yml \
+#     --ask-vault-pass
+#
+# See docs/cluster-onboarding-pipeline.md for configuration options and
+# the full operational decision guide.
+
+- name: "ACM cluster onboarding — {{ cluster_config | basename | splitext | first }}"
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  environment:
+    KUBECONFIG: "{{ lookup('env', 'KUBECONFIG') | default(install_dir ~ '/auth/kubeconfig', true) }}"
+  vars_files:
+    - "../vars/acm_config.yml"
+    - "{{ cluster_config }}"
+
+  vars:
+    # --- Pipeline operational defaults (override in acm_config.yml or cluster YAML) ---
+    cluster_onboard_git_strategy: "direct"
+    cluster_onboard_git_branch_prefix: "cluster-onboard"
+    cluster_onboard_git_pr_auto_merge: false
+    cluster_onboard_argocd_sync_strategy: "trigger"
+    cluster_onboard_infraenv_poll_retries: 40
+    cluster_onboard_infraenv_poll_delay: 30
+    cluster_onboard_listener_port: 8080
+    cluster_onboard_listener_host: "{{ ansible_default_ipv4.address }}"
+    cluster_onboard_listener_timeout: 600
+    cluster_onboard_node_poll_timeout: 35
+    cluster_onboard_preflight_dns_check: true
+    cluster_onboard_preflight_cidr_check: true
+    cluster_onboard_min_vcpus: 16
+    cluster_onboard_min_ram_mb: 32768
+    # URL of the hardware discovery live ISO (served from HTTP server)
+    cluster_onboard_discovery_iso_url: >-
+      http://{{ hostvars[groups['http_servers'][0]]['http_server_base_url'] }}/discovery.iso
+    argocd_server: ""
+    vault_addr: "https://vault.{{ cluster_name }}.{{ base_domain }}"
+
+  tasks:
+    # =========================================================================
+    # Step 0: Pre-flight checks
+    # =========================================================================
+    - name: "Step 0 — Run pre-flight checks"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/preflight_checks.yml"
+      tags: [preflight]
+
+    # =========================================================================
+    # Step 1: BMC Redfish discovery
+    # =========================================================================
+    - name: "Step 1 — BMC Redfish hardware discovery"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/bmc_redfish_discovery.yml"
+      tags: [discovery]
+
+    # =========================================================================
+    # Step 2: Start registration listener and boot nodes
+    # =========================================================================
+    - name: "Step 2a — Start node registration listener"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/start_registration_listener.yml"
+      tags: [listener]
+
+    - name: "Step 2b — Boot nodes and drain registration callbacks"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/callback_queue_drain.yml"
+      tags: [listener, drain]
+
+    # =========================================================================
+    # Step 3: Facts merge and hardware validation
+    # =========================================================================
+    - name: "Step 3 — Merge facts and validate hardware"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/facts_merge.yml"
+      tags: [facts]
+
+    # =========================================================================
+    # Step 4: Template rendering
+    # =========================================================================
+    - name: "Step 4 — Render cluster manifests"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/render_cluster_templates.yml"
+      tags: [render]
+
+    # =========================================================================
+    # Step 5: Git + Vault (strategy-dependent ordering)
+    #
+    # direct:    Load Vault → commit → push to main
+    # branch_pr: Commit → push branch → open PR → (merge) → Load Vault
+    # =========================================================================
+
+    # --- direct strategy: Vault BEFORE git push ---
+    - name: "Step 5 (direct) — Load spoke secrets into Vault before push"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/vault_load_spoke_secrets.yml"
+      when: cluster_onboard_git_strategy == "direct"
+      tags: [vault, git]
+
+    - name: "Step 5 — Commit and push cluster manifests"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/git_commit_cluster.yml"
+      tags: [git]
+
+    # --- branch_pr strategy: Vault AFTER PR merge ---
+    - name: "Step 5 (branch_pr) — Load spoke secrets into Vault after PR merge"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/vault_load_spoke_secrets.yml"
+      when: cluster_onboard_git_strategy == "branch_pr"
+      tags: [vault, git]
+
+    # =========================================================================
+    # Step 6: ArgoCD sync
+    # =========================================================================
+    - name: "Step 6 — Trigger or await ArgoCD sync"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/argocd_sync_cluster.yml"
+      tags: [argocd]
+
+    # =========================================================================
+    # Step 7: Wait for InfrastructureEnv ISO
+    # =========================================================================
+    - name: "Step 7 — Wait for discovery ISO to be generated"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/wait_infraenv_iso.yml"
+      tags: [infraenv]
+
+    # =========================================================================
+    # Step 8: BMC ISO mount and cluster installation boot
+    # =========================================================================
+    - name: "Step 8 — Mount discovery ISO and power cycle nodes for cluster install"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/bmc_virtual_media.yml"
+      vars:
+        bmc_iso_url: "{{ spoke_discovery_iso_url }}"
+        bmc_nodes: "{{ nodes }}"
+      tags: [bmc, install]
+
+    - name: "Step 8 — Power cycle nodes to boot from discovery ISO"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/bmc_power_control.yml"
+      vars:
+        bmc_nodes: "{{ nodes }}"
+      tags: [bmc, install]
+
+    - name: "Onboarding pipeline complete for cluster {{ cluster.name }}"
+      ansible.builtin.debug:
+        msg: >-
+          Cluster {{ cluster.name }}.{{ cluster.base_domain }} is installing.
+          Agents will register with ACM automatically as nodes boot.
+          Monitor progress in the ACM console:
+          https://console-openshift-console.apps.{{ cluster_name }}.{{ base_domain }}/multicloud/infrastructure/clusters

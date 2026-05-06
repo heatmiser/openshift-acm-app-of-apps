@@ -1,0 +1,85 @@
+---
+# === BMC REDFISH DISCOVERY ===
+# Query each node's BMC via Redfish before any OS boot to harvest serial
+# numbers and NIC MAC addresses. Results are stored in bmc_discovery_facts
+# keyed by BMC IP, then correlated to node definitions via BMC IP match.
+
+- name: "Query Redfish system info for {{ item.hostname }}"
+  ansible.builtin.uri:
+    url: >-
+      https://{{ item.bmc.ip }}/redfish/v1/Systems/System.Embedded.1
+    method: GET
+    user: "{{ item.bmc.user }}"
+    password: "{{ item.bmc.password }}"
+    validate_certs: false
+    force_basic_auth: true
+    return_content: true
+    status_code: 200
+  register: _redfish_system
+  delegate_to: localhost
+  loop: "{{ nodes }}"
+  loop_control:
+    label: "{{ item.hostname }} (BMC {{ item.bmc.ip }})"
+
+- name: "Query Redfish NIC list for {{ item.hostname }}"
+  ansible.builtin.uri:
+    url: >-
+      https://{{ item.bmc.ip }}/redfish/v1/Systems/System.Embedded.1/EthernetInterfaces
+    method: GET
+    user: "{{ item.bmc.user }}"
+    password: "{{ item.bmc.password }}"
+    validate_certs: false
+    force_basic_auth: true
+    return_content: true
+    status_code: 200
+  register: _redfish_nics
+  delegate_to: localhost
+  loop: "{{ nodes }}"
+  loop_control:
+    label: "{{ item.hostname }} (BMC {{ item.bmc.ip }})"
+
+# Build a dict: { bmc_ip: { serial: ..., macs: [...] } }
+- name: "Build BMC discovery facts dict"
+  ansible.builtin.set_fact:
+    bmc_discovery_facts: >-
+      {{
+        bmc_discovery_facts | default({}) | combine(
+          {
+            nodes[idx].bmc.ip: {
+              'hostname': nodes[idx].hostname,
+              'serial': _redfish_system.results[idx].json.SerialNumber | trim,
+              'bmc_ip': nodes[idx].bmc.ip,
+              'macs': _redfish_nics.results[idx].json.Members
+                      | map(attribute='@odata.id')
+                      | list
+            }
+          }
+        )
+      }}
+  loop: "{{ range(nodes | length) | list }}"
+  loop_control:
+    loop_var: idx
+    label: "{{ nodes[idx].hostname }}"
+
+# Build a reverse-lookup dict: { serial: bmc_ip }
+# Used in facts_merge.yml to match callback serials to node definitions.
+- name: "Build serial → BMC IP lookup"
+  ansible.builtin.set_fact:
+    bmc_serial_to_ip: >-
+      {{
+        bmc_serial_to_ip | default({}) | combine(
+          { item.value.serial: item.key }
+        )
+      }}
+  loop: "{{ bmc_discovery_facts | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: "Display BMC discovery summary"
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.value.hostname }}: serial={{ item.value.serial }}
+      bmc={{ item.key }}
+  loop: "{{ bmc_discovery_facts | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"

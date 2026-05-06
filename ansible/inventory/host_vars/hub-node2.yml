@@ -8,7 +8,7 @@ node:
   ipv4_dns: "192.168.1.1"
   mac: "aa:bb:cc:dd:ee:02"
   interface: "eno1"
-  role: "master"
+  role: "control-plane"
 
 # BMC credentials — set via ansible-vault (ansible-vault edit host_vars/hub-node2.yml)
 idrac_ip: "192.168.0.12"

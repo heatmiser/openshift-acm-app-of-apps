@@ -1,0 +1,79 @@
+---
+# === ARGOCD SYNC ===
+# Trigger or poll ArgoCD reconciliation of the hub Application after the
+# cluster manifests land in Git. Two strategies controlled by
+# cluster_onboard_argocd_sync_strategy:
+#   trigger — call ArgoCD API to force immediate sync
+#   poll    — wait for ArgoCD natural reconcile cycle
+
+# --- Auto-detect ArgoCD server route if not configured ---
+- name: "Retrieve ArgoCD server route"
+  kubernetes.core.k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    name: openshift-gitops-server
+    namespace: openshift-gitops
+  register: _argocd_route
+  when: argocd_server == ""
+
+- name: "Set ArgoCD server hostname from route"
+  ansible.builtin.set_fact:
+    argocd_server: "{{ _argocd_route.resources[0].spec.host }}"
+  when:
+    - argocd_server == ""
+    - _argocd_route.resources | length > 0
+
+# --- Retrieve ArgoCD token from Vault (trigger strategy only) ---
+- name: "Retrieve ArgoCD token from Vault"
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/secret/data/hub/argocd"
+    method: GET
+    headers:
+      X-Vault-Token: "{{ vault_root_token }}"
+    validate_certs: false
+    status_code: 200
+  register: _vault_argocd
+  no_log: true
+  when: cluster_onboard_argocd_sync_strategy == "trigger"
+
+# --- Trigger immediate sync ---
+- name: "Trigger ArgoCD sync of hub Application"
+  ansible.builtin.uri:
+    url: "https://{{ argocd_server }}/api/v1/applications/hub/sync"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _vault_argocd.json.data.data.token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      revision: "HEAD"
+      prune: false
+    validate_certs: false
+    status_code: 200
+  register: _argocd_sync
+  when: cluster_onboard_argocd_sync_strategy == "trigger"
+
+- name: "Wait for hub Application to reach Synced + Healthy state"
+  ansible.builtin.uri:
+    url: "https://{{ argocd_server }}/api/v1/applications/hub"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _vault_argocd.json.data.data.token }}"
+    validate_certs: false
+    status_code: 200
+  register: _argocd_status
+  until: >-
+    _argocd_status.json.status.sync.status == "Synced" and
+    _argocd_status.json.status.health.status == "Healthy"
+  retries: 30
+  delay: 20
+  when: cluster_onboard_argocd_sync_strategy == "trigger"
+
+# --- Poll strategy: no ArgoCD API interaction ---
+- name: "Waiting for ArgoCD natural reconcile (poll strategy)"
+  ansible.builtin.debug:
+    msg: >-
+      ArgoCD sync strategy is 'poll'. Waiting for natural reconcile cycle.
+      If the default 3-minute interval is too slow, reduce timeout.reconciliation
+      in argocd-cm ConfigMap to 30s or 60s.
+  when: cluster_onboard_argocd_sync_strategy == "poll"

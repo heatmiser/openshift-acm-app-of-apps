@@ -1,0 +1,145 @@
+---
+# =============================================================================
+# EXAMPLE cluster definition — vars/clusters/spoke1.yml
+# =============================================================================
+#
+# This file is an EXAMPLE. Copy it, rename it, and populate it with real
+# values before running the cluster onboarding pipeline.
+#
+# NAMING CONVENTION (strongly recommended, not enforced):
+#   The filename should match the cluster.name field in this file. The pipeline
+#   does not verify that the filename and cluster.name agree — a mismatch will
+#   not cause an error, but it will confuse operators who need to locate a
+#   cluster's definition by name. The convention keeps the filename as a
+#   reliable and unambiguous key.
+#
+#   Example: a cluster named "prod-east-1" belongs in:
+#     vars/clusters/prod-east-1.yml
+#   with cluster.name set to "prod-east-1".
+#
+# INVOCATION:
+#   ansible-playbook playbooks/cluster_onboard.yml \
+#     -e cluster_config=vars/clusters/spoke1.yml \
+#     --ask-vault-pass
+#
+#   The cluster_config path is relative to the ansible/ directory where the
+#   playbook is run. Adjust accordingly if running from a different directory.
+#
+# SECRETS:
+#   BMC passwords referenced as vault variables (e.g. vault_bmc_password_*)
+#   must be defined in ansible/vars/vault_secrets.yml (ansible-vault encrypted).
+#   The pull secret and SSH key are read from Vault (HashiCorp) during the
+#   pipeline run — see cluster.pull_secret_vault_path and
+#   cluster.ssh_key_vault_path below.
+#
+# INTERFACE AND MAC FIELDS:
+#   The interface and mac fields under each node are intentionally left blank.
+#   The pipeline populates them automatically during Step 1 (BMC Redfish
+#   discovery) and Step 2 (live ISO callback). Do not pre-populate these
+#   unless you are certain of the values and want to skip hardware discovery.
+# =============================================================================
+
+cluster:
+  # ---------------------------------------------------------------------------
+  # Cluster identity
+  # Must be unique across all ACM-managed clusters. Used as the namespace name
+  # for Hive/ACM resources and as the ArgoCD Application name.
+  # ---------------------------------------------------------------------------
+  name: "spoke1"
+  base_domain: "example.com"
+  ocp_version: "4.21"
+
+  # ---------------------------------------------------------------------------
+  # Virtual IPs — must be within machine_network_cidr and currently unassigned.
+  # Reserve these IPs in your DHCP server or network config before onboarding.
+  # ---------------------------------------------------------------------------
+  api_vip: "192.168.2.100"
+  ingress_vip: "192.168.2.101"
+
+  # ---------------------------------------------------------------------------
+  # Network CIDRs
+  # machine_network_cidr: routable subnet the nodes live on
+  # cluster_network_cidr: OVN pod CIDR (must not overlap hub or other spokes)
+  # service_network_cidr: OVN service CIDR (must not overlap hub or other spokes)
+  # ---------------------------------------------------------------------------
+  machine_network_cidr: "192.168.2.0/24"
+  cluster_network_cidr: "10.132.0.0/14"
+  cluster_network_host_prefix: 23
+  service_network_cidr: "172.31.0.0/16"
+  network_type: "OVNKubernetes"
+
+  # ---------------------------------------------------------------------------
+  # Git branch this cluster's manifests are deployed from.
+  # Recorded in clusters/cluster-versions.yaml. Set to "main" unless this
+  # cluster tracks a dedicated release branch.
+  # ---------------------------------------------------------------------------
+  git_branch: "main"
+
+  # ---------------------------------------------------------------------------
+  # Vault paths for secrets (HashiCorp Vault KV v2).
+  # These paths must be populated before the pipeline starts (pull secret and
+  # SSH key are global — populated during hub bootstrap). The pipeline reads
+  # these during template rendering and Vault loading steps.
+  # ---------------------------------------------------------------------------
+  pull_secret_vault_path: "secret/global/pull-secret"
+  ssh_key_vault_path: "secret/global/ssh-public-key"
+
+  # Spoke-specific Vault path prefix for secrets the pipeline loads.
+  # The pipeline stores BMC passwords and any other spoke secrets under:
+  #   secret/<cluster_vault_path_prefix>/<secret_name>
+  cluster_vault_path_prefix: "secret/spoke1"
+
+# =============================================================================
+# Node definitions
+# One entry per control plane node. For compact three-node clusters all nodes
+# have role "control-plane". Worker nodes would be added as role "worker".
+# =============================================================================
+nodes:
+  - hostname: "spoke1-cp1"
+    role: "control-plane"
+    ipv4_address: "192.168.2.10"
+    ipv4_prefix: 24
+    ipv4_gateway: "192.168.2.1"
+    ipv4_dns: "192.168.2.1"
+    # Populated automatically by pipeline hardware discovery — leave blank.
+    interface: ""
+    mac: ""
+    bmc:
+      ip: "192.168.0.21"
+      user: "root"
+      # Vault variable — defined in ansible/vars/vault_secrets.yml
+      password: "{{ vault_bmc_password_spoke1_cp1 }}"
+
+  - hostname: "spoke1-cp2"
+    role: "control-plane"
+    ipv4_address: "192.168.2.11"
+    ipv4_prefix: 24
+    ipv4_gateway: "192.168.2.1"
+    ipv4_dns: "192.168.2.1"
+    interface: ""
+    mac: ""
+    bmc:
+      ip: "192.168.0.22"
+      user: "root"
+      password: "{{ vault_bmc_password_spoke1_cp2 }}"
+
+  - hostname: "spoke1-cp3"
+    role: "control-plane"
+    ipv4_address: "192.168.2.12"
+    ipv4_prefix: 24
+    ipv4_gateway: "192.168.2.1"
+    ipv4_dns: "192.168.2.1"
+    interface: ""
+    mac: ""
+    bmc:
+      ip: "192.168.0.23"
+      user: "root"
+      password: "{{ vault_bmc_password_spoke1_cp3 }}"
+
+# =============================================================================
+# Pipeline operational overrides (optional)
+# Uncomment and set to override fleet-wide defaults from acm_config.yml for
+# this cluster only. See docs/cluster-onboarding-pipeline.md for all options.
+# =============================================================================
+# cluster_onboard_git_strategy: "direct"          # "direct" | "branch_pr"
+# cluster_onboard_argocd_sync_strategy: "trigger"  # "trigger" | "poll"

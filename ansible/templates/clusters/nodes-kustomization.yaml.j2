@@ -1,0 +1,9 @@
+{{ ansible_managed | comment }}
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+{% for node in nodes %}
+  - {{ node.hostname }}-nmstate.yaml
+{% endfor %}

@@ -24,7 +24,7 @@ platform_type: "none"
 # =============================================================================
 # Node defaults (override per-host in host_vars if hardware differs)
 # =============================================================================
-node_role: "master"
+node_role: "control-plane"
 node_interface: "eno1"
 
 # =============================================================================

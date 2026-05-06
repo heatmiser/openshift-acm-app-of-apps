@@ -81,7 +81,7 @@ Document the following before creating any files:
 | Cluster name | `spoke1` | Short, DNS-safe, unique |
 | Base domain | `example.com` | Must match hub or a delegated zone |
 | OCP version | `4.21` | Must match an available ClusterImageSet |
-| Node count | 3 (compact) or 3+N | 3 masters; add workers for larger |
+| Node count | 3 (compact) or 3+N | 3 control-plane nodes; add workers for larger |
 | Rendezvous IP | `192.168.2.10` | One control plane node IP |
 | Machine network | `192.168.2.0/24` | Physical node subnet |
 | Cluster network | `10.132.0.0/14` | Must not overlap with hub or other clusters |
