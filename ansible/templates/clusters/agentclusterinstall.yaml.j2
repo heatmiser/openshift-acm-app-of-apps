@@ -1,0 +1,30 @@
+{{ ansible_managed | comment }}
+---
+apiVersion: extensions.hive.openshift.io/v1beta1
+kind: AgentClusterInstall
+metadata:
+  name: {{ cluster.name }}
+  namespace: {{ cluster.name }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+    agent-install.openshift.io/install-config-overrides: >-
+      {"networking":{"networkType":"{{ cluster.network_type }}"}}
+spec:
+  apiVIP: {{ cluster.api_vip }}
+  ingressVIP: {{ cluster.ingress_vip }}
+  clusterDeploymentRef:
+    name: {{ cluster.name }}
+  imageSetRef:
+    name: openshift-{{ cluster.ocp_version }}
+  networking:
+    clusterNetwork:
+      - cidr: {{ cluster.cluster_network_cidr }}
+        hostPrefix: {{ cluster.cluster_network_host_prefix }}
+    machineNetwork:
+      - cidr: {{ cluster.machine_network_cidr }}
+    serviceNetwork:
+      - {{ cluster.service_network_cidr }}
+  provisionRequirements:
+    controlPlaneAgents: {{ nodes | selectattr('role', 'equalto', 'control-plane') | list | length }}
+    workerAgents: {{ nodes | selectattr('role', 'equalto', 'worker') | list | length }}
+  sshPublicKey: {{ cluster_ssh_public_key }}

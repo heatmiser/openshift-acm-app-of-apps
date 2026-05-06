@@ -1,0 +1,21 @@
+{{ ansible_managed | comment }}
+---
+apiVersion: agent-install.openshift.io/v1beta1
+kind: InfrastructureEnv
+metadata:
+  name: {{ cluster.name }}
+  namespace: {{ cluster.name }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+spec:
+  clusterRef:
+    name: {{ cluster.name }}
+    namespace: {{ cluster.name }}
+  pullSecretRef:
+    name: {{ cluster.name }}-pull-secret
+  sshAuthorizedKey: {{ cluster_ssh_public_key }}
+  agentLabels:
+    cluster-name: {{ cluster.name }}
+  nmStateConfigLabelSelector:
+    matchLabels:
+      infraenvs.agent-install.openshift.io: {{ cluster.name }}

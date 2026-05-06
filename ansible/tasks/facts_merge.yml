@@ -1,0 +1,101 @@
+---
+# === FACTS MERGE ===
+# Correlate BMC Redfish discovery data (serial + MACs) with live ISO callback
+# data (serial + OS interface name + OS-assigned IP) to produce a complete
+# per-node fact set. Validates hardware against minimum requirements and writes
+# merged facts back into the nodes list for template rendering.
+
+# --- Gather hardware facts from registered nodes via SSH ---
+- name: "Gather hardware facts from registered nodes"
+  ansible.builtin.setup:
+    gather_subset:
+      - hardware
+      - network
+  delegate_to: "{{ item }}"
+  register: _node_facts
+  loop: "{{ groups['registered_nodes'] | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+
+# --- Validate minimum hardware requirements ---
+- name: "Validate CPU count for {{ item.ansible_facts.ansible_hostname }}"
+  ansible.builtin.assert:
+    that:
+      - item.ansible_facts.ansible_processor_vcpus >= cluster_onboard_min_vcpus | default(16)
+    fail_msg: >-
+      {{ item.ansible_facts.ansible_hostname }} has
+      {{ item.ansible_facts.ansible_processor_vcpus }} vCPUs but minimum is
+      {{ cluster_onboard_min_vcpus | default(16) }}
+  loop: "{{ _node_facts.results }}"
+  loop_control:
+    label: "{{ item.ansible_facts.ansible_hostname }}"
+
+- name: "Validate RAM for {{ item.ansible_facts.ansible_hostname }}"
+  ansible.builtin.assert:
+    that:
+      - item.ansible_facts.ansible_memtotal_mb >= cluster_onboard_min_ram_mb | default(32768)
+    fail_msg: >-
+      {{ item.ansible_facts.ansible_hostname }} has
+      {{ item.ansible_facts.ansible_memtotal_mb }}MB RAM but minimum is
+      {{ cluster_onboard_min_ram_mb | default(32768) }}MB
+  loop: "{{ _node_facts.results }}"
+  loop_control:
+    label: "{{ item.ansible_facts.ansible_hostname }}"
+
+# --- Correlate callbacks to node definitions via serial number ---
+# bmc_serial_to_ip was built in bmc_redfish_discovery.yml
+# bmc_discovery_facts is keyed by bmc_ip and contains hostname + serial
+- name: "Build merged node facts"
+  ansible.builtin.set_fact:
+    merged_nodes: >-
+      {{
+        merged_nodes | default([]) +
+        [
+          {
+            'hostname': (
+              bmc_discovery_facts[bmc_serial_to_ip[item.json.serial]].hostname
+            ),
+            'serial': item.json.serial,
+            'ip': item.json.ip,
+            'mac': item.json.mac,
+            'interface': item.json.interface,
+            'bmc_ip': bmc_serial_to_ip[item.json.serial],
+            'node_def': nodes | selectattr(
+              'bmc', 'defined'
+            ) | selectattr(
+              'bmc.ip', 'equalto', bmc_serial_to_ip[item.json.serial]
+            ) | first
+          }
+        ]
+      }}
+  loop: "{{ _drain_results.results }}"
+  loop_control:
+    label: "{{ item.json.serial }}"
+  when: item.json is not none
+
+# --- Rebuild nodes list with discovered interface and MAC values ---
+- name: "Merge discovered interface and MAC into node definitions"
+  ansible.builtin.set_fact:
+    nodes: >-
+      {{
+        nodes | map('combine',
+          (merged_nodes | selectattr(
+            'node_def.bmc.ip', 'equalto', item.bmc.ip
+          ) | first | default({}))
+          | dict2items
+          | selectattr('key', 'in', ['interface', 'mac'])
+          | items2dict
+        ) | list
+      }}
+  loop: "{{ nodes }}"
+  loop_control:
+    label: "{{ item.hostname }}"
+
+- name: "Display merged node facts"
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.hostname }}: ip={{ item.ipv4_address }}
+      mac={{ item.mac }} interface={{ item.interface }}
+  loop: "{{ nodes }}"
+  loop_control:
+    label: "{{ item.hostname }}"

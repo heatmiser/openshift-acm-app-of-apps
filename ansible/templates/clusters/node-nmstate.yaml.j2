@@ -1,0 +1,38 @@
+{{ ansible_managed | comment }}
+---
+apiVersion: agent-install.openshift.io/v1beta1
+kind: NMStateConfig
+metadata:
+  name: {{ node.hostname }}
+  namespace: {{ cluster.name }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+  labels:
+    infraenvs.agent-install.openshift.io: {{ cluster.name }}
+spec:
+  config:
+    interfaces:
+      - name: {{ node.interface }}
+        type: ethernet
+        state: up
+        ethernet:
+          auto-negotiation: true
+        ipv4:
+          enabled: true
+          address:
+            - ip: {{ node.ipv4_address }}
+              prefix-length: {{ node.ipv4_prefix }}
+          dhcp: false
+    dns-resolver:
+      config:
+        server:
+          - {{ node.ipv4_dns }}
+    routes:
+      config:
+        - destination: 0.0.0.0/0
+          next-hop-address: {{ node.ipv4_gateway }}
+          next-hop-interface: {{ node.interface }}
+          table-id: 254
+  interfaces:
+    - name: {{ node.interface }}
+      macAddress: "{{ node.mac }}"

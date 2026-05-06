@@ -1,0 +1,33 @@
+{{ ansible_managed | comment }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ cluster.name }}
+  labels:
+    cluster-name: {{ cluster.name }}
+---
+apiVersion: hive.openshift.io/v1
+kind: ClusterDeployment
+metadata:
+  name: {{ cluster.name }}
+  namespace: {{ cluster.name }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+    argocd.argoproj.io/managed-by: openshift-gitops
+spec:
+  baseDomain: {{ cluster.base_domain }}
+  clusterName: {{ cluster.name }}
+  installed: false
+  clusterInstallRef:
+    group: extensions.hive.openshift.io
+    kind: AgentClusterInstall
+    name: {{ cluster.name }}
+    version: v1beta1
+  platform:
+    agentBareMetal:
+      agentSelector:
+        matchLabels:
+          cluster-name: {{ cluster.name }}
+  pullSecretRef:
+    name: {{ cluster.name }}-pull-secret

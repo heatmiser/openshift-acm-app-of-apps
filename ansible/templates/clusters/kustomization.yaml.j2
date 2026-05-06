@@ -1,0 +1,11 @@
+{{ ansible_managed | comment }}
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - clusterdeployment.yaml
+  - agentclusterinstall.yaml
+  - infraenv.yaml
+  - externalsecret-pull-secret.yaml
+  - nodes/

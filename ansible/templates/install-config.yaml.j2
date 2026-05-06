@@ -10,6 +10,8 @@ compute:
 controlPlane:
   architecture: amd64
   hyperthreading: Enabled
+  # "master" is the required MachineConfigPool name in the OpenShift installer spec.
+  # This is an API field — do not change it to "control-plane".
   name: master
   replicas: 3
 metadata:

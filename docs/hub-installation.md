@@ -185,7 +185,7 @@ node:
   ipv4_dns: "192.168.1.1"         # resolver — can be the same as gateway
   mac: "aa:bb:cc:dd:ee:01"        # MAC of the primary network interface
   interface: "eno1"               # NIC name (override if different from group default)
-  role: "master"                  # always "master" for compact 3-node cluster
+  role: "control-plane"           # always "control-plane" for compact 3-node cluster
 
 # BMC (iDRAC) — IP is on the out-of-band management network
 idrac_ip: "192.168.0.11"
@@ -206,7 +206,7 @@ curl -sk -u admin:password \
 
 ### Node roles
 
-For a standard compact hub cluster all three nodes are `master`. If you add dedicated worker nodes later (not typical for a compact hub), set `role: "worker"` and add them to a `worker_nodes` group.
+For a standard compact hub cluster all three nodes are `control-plane`. If you add dedicated worker nodes later (not typical for a compact hub), set `role: "worker"` and add them to a `worker_nodes` group.
 
 ---
 

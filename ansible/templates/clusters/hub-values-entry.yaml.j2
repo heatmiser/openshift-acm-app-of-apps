@@ -1,0 +1,17 @@
+{#
+  Partial values snippet appended to clusters/hub/values.yaml by
+  render_cluster_templates.yml to register the new cluster as an ArgoCD
+  Application in the app-of-apps cascade.
+
+  This template is not rendered to a standalone file — it is rendered to a
+  string and appended by the task using ansible.builtin.blockinfile.
+#}
+  # ---------------------------------------------------------------------------
+  # Wave 25 — {{ cluster.name }} cluster provisioning
+  # Added by cluster onboarding pipeline on {{ ansible_date_time.date }}
+  # ---------------------------------------------------------------------------
+  {{ cluster.name }}:
+    path: clusters/{{ cluster.name }}
+    syncWave: "25"
+    destination:
+      namespace: {{ cluster.name }}

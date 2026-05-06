@@ -35,7 +35,7 @@ Applied to all hosts in the `hub_nodes` inventory group.
 | `service_network_cidr` | No | `172.30.0.0/16` | ClusterIP service CIDR. Internal to the cluster. Must not overlap with machine network or other clusters. |
 | `network_type` | No | `OVNKubernetes` | CNI plugin. `OVNKubernetes` is required for bare metal with MetalLB. |
 | `platform_type` | No | `none` | Platform integration. `none` means no cloud provider. Do not change for bare metal. |
-| `node_role` | No | `master` | Default role applied to all nodes in the group. For a compact 3-node cluster this is always `master`. Override per-node in `host_vars`. |
+| `node_role` | No | `control-plane` | Default role applied to all nodes in the group. For a compact 3-node cluster this is always `control-plane`. Override per-node in `host_vars`. |
 | `node_interface` | No | `eno1` | Default NIC name for all nodes. Override per-node in `host_vars` if hardware differs. |
 | `ansible_user` | No | `ansiblerunner` | SSH user for post-install Ansible access to nodes. |
 | `become` | No | `true` | Whether Ansible uses privilege escalation on nodes. |
@@ -58,7 +58,7 @@ One file per node. The `node:` dict keys are used in both the `agent-config.yaml
 | `node.ipv4_dns` | Yes | DNS resolver. Can be the same as the gateway. |
 | `node.mac` | Yes | MAC address of the primary NIC. The Agent-Based Installer uses this to match the NMState config to the physical NIC. |
 | `node.interface` | No | NIC name (e.g., `eno1`, `eth0`, `bond0`). Defaults to `node_interface` from group_vars. |
-| `node.role` | No | `master` or `worker`. Defaults to `master` for compact clusters. |
+| `node.role` | No | `control-plane` or `worker`. Defaults to `control-plane` for compact clusters. |
 
 ### BMC variables
 
@@ -80,7 +80,7 @@ node:
   ipv4_dns: "192.168.1.1"
   mac: "aa:bb:cc:dd:ee:02"
   interface: "eno1"
-  role: "master"
+  role: "control-plane"
 
 idrac_ip: "192.168.0.12"
 idrac_user: "{{ vault_idrac_user_node2 }}"
