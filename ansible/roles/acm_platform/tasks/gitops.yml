@@ -1,0 +1,79 @@
+---
+# === GITOPS BOOTSTRAP ===
+# Deploys the OpenShift GitOps operator, the envsubst CMP ConfigMap, an ArgoCD
+# instance, and the root ArgoCD Application. After this task completes, ArgoCD
+# takes over all subsequent deployment via the app-of-apps cascade.
+#
+# Step order matters — see inline comments.
+# Runs in localhost play context with KUBECONFIG set to the installed cluster.
+
+- name: "Apply OpenShift GitOps operator subscription"
+  kubernetes.core.k8s:
+    state: present
+    template: "{{ playbook_dir }}/../.bootstrap/subscription.yaml"
+
+- name: "Wait for OpenShift GitOps CSV to succeed"
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "openshift-operators"
+  register: gitops_csv_result
+  until: >-
+    gitops_csv_result.resources | length > 0 and
+    (gitops_csv_result.resources
+      | selectattr('metadata.name', 'search', 'openshift-gitops-operator')
+      | selectattr('status.phase', 'defined')
+      | selectattr('status.phase', 'equalto', 'Succeeded')
+      | list | length > 0)
+  retries: 30
+  delay: 20
+
+- name: "Wait for openshift-gitops namespace to exist"
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: "{{ gitops_namespace }}"
+  register: gitops_ns_result
+  until: gitops_ns_result.resources | length > 0
+  retries: 15
+  delay: 10
+
+- name: "Apply ArgoCD cluster-admin role binding"
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../.bootstrap/cluster-rolebinding.yaml"
+
+# Must exist before the ArgoCD instance so the operator can mount it at startup.
+- name: "Apply envsubst CMP ConfigMap"
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../.bootstrap/setenv-plugin-configmap.yaml"
+
+- name: "Deploy ArgoCD instance"
+  kubernetes.core.k8s:
+    state: present
+    template: "{{ playbook_dir }}/../.bootstrap/argocd.yaml"
+
+- name: "Wait for ArgoCD instance to become available"
+  kubernetes.core.k8s_info:
+    api_version: argoproj.io/v1alpha1
+    kind: ArgoCD
+    name: openshift-gitops
+    namespace: "{{ gitops_namespace }}"
+  register: argocd_status_result
+  until: >-
+    argocd_status_result.resources | length > 0 and
+    (argocd_status_result.resources[0].status.phase | default('') == 'Available')
+  retries: 30
+  delay: 20
+
+- name: "Deploy root ArgoCD Application"
+  kubernetes.core.k8s:
+    state: present
+    template: "{{ playbook_dir }}/../.bootstrap/root-application.yaml"
+
+- name: "Display GitOps bootstrap completion"
+  ansible.builtin.debug:
+    msg: >-
+      ArgoCD root application deployed. The app-of-apps cascade is now
+      managing cluster configuration from {{ gitops_repo }} ({{ gitops_revision }}).

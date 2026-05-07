@@ -19,9 +19,6 @@
 #   ansible-playbook playbooks/cluster_onboard.yml \
 #     -e cluster_config=vars/clusters/spoke1.yml \
 #     --ask-vault-pass
-#
-# See docs/cluster-onboarding-pipeline.md for configuration options and
-# the full operational decision guide.
 
 - name: "ACM cluster onboarding — {{ cluster_config | basename | splitext | first }}"
   hosts: localhost
@@ -33,66 +30,59 @@
     - "../vars/acm_config.yml"
     - "{{ cluster_config }}"
 
-  vars:
-    # --- Pipeline operational defaults (override in acm_config.yml or cluster YAML) ---
-    cluster_onboard_git_strategy: "direct"
-    cluster_onboard_git_branch_prefix: "cluster-onboard"
-    cluster_onboard_git_pr_auto_merge: false
-    cluster_onboard_argocd_sync_strategy: "trigger"
-    cluster_onboard_infraenv_poll_retries: 40
-    cluster_onboard_infraenv_poll_delay: 30
-    cluster_onboard_listener_port: 8080
-    cluster_onboard_listener_host: "{{ ansible_default_ipv4.address }}"
-    cluster_onboard_listener_fqdn: "{{ ansible_fqdn }}"
-    cluster_onboard_listener_timeout: 600
-    cluster_onboard_node_poll_timeout: 35
-    cluster_onboard_preflight_dns_check: true
-    cluster_onboard_preflight_cidr_check: true
-    cluster_onboard_min_vcpus: 16
-    cluster_onboard_min_ram_mb: 32768
-    argocd_server: ""
-    vault_addr: "https://vault.{{ cluster_name }}.{{ base_domain }}"
-
   tasks:
     # =========================================================================
     # Step 0: Pre-flight checks
     # =========================================================================
     - name: "Step 0 — Run pre-flight checks"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/preflight_checks.yml"
+      ansible.builtin.include_role:
+        name: acm_preflight
       tags: [preflight]
 
     # =========================================================================
     # Step 1: BMC Redfish discovery
     # =========================================================================
     - name: "Step 1 — BMC Redfish hardware discovery"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/bmc_redfish_discovery.yml"
+      ansible.builtin.include_role:
+        name: acm_bmc
+        tasks_from: spoke_redfish
       tags: [discovery]
 
     # =========================================================================
     # Step 2: DNS SRV record, registration listener, Live ISO boot, queue drain
     # =========================================================================
     - name: "Step 2a — Create DNS SRV record for Live ISO controller discovery"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/dns_srv_manage.yml"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: dns_srv
       vars:
         dns_srv_state: present
       tags: [listener, dns]
 
     - name: "Step 2b — Start node registration listener"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/start_registration_listener.yml"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: listener
       tags: [listener]
 
-    - name: "Step 2c — Boot nodes and drain registration callbacks"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/callback_queue_drain.yml"
+    - name: "Step 2c — Boot nodes from Live ISO and drain registration callbacks"
+      ansible.builtin.include_role:
+        name: acm_bmc
+        tasks_from: spoke_boot
+      tags: [listener, drain]
+
+    - name: "Step 2c — Drain registration queue"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: drain
+      vars:
+        _drain_node_count: "{{ nodes | length }}"
       tags: [listener, drain]
 
     - name: "Step 2d — Remove DNS SRV record"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/dns_srv_manage.yml"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: dns_srv
       vars:
         dns_srv_state: absent
       tags: [listener, dns]
@@ -101,41 +91,40 @@
     # Step 3: Facts merge and hardware validation
     # =========================================================================
     - name: "Step 3 — Merge facts and validate hardware"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/facts_merge.yml"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: spoke_correlate
       tags: [facts]
 
     # =========================================================================
     # Step 4: Template rendering
     # =========================================================================
     - name: "Step 4 — Render cluster manifests"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/render_cluster_templates.yml"
+      ansible.builtin.include_role:
+        name: acm_cluster_manifest
+        tasks_from: render
       tags: [render]
 
     # =========================================================================
     # Step 5: Git + Vault (strategy-dependent ordering)
-    #
-    # direct:    Load Vault → commit → push to main
-    # branch_pr: Commit → push branch → open PR → (merge) → Load Vault
     # =========================================================================
-
-    # --- direct strategy: Vault BEFORE git push ---
     - name: "Step 5 (direct) — Load spoke secrets into Vault before push"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/vault_load_spoke_secrets.yml"
+      ansible.builtin.include_role:
+        name: acm_cluster_manifest
+        tasks_from: vault_load
       when: cluster_onboard_git_strategy == "direct"
       tags: [vault, git]
 
     - name: "Step 5 — Commit and push cluster manifests"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/git_commit_cluster.yml"
+      ansible.builtin.include_role:
+        name: acm_cluster_manifest
+        tasks_from: git_commit
       tags: [git]
 
-    # --- branch_pr strategy: Vault AFTER PR merge ---
     - name: "Step 5 (branch_pr) — Load spoke secrets into Vault after PR merge"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/vault_load_spoke_secrets.yml"
+      ansible.builtin.include_role:
+        name: acm_cluster_manifest
+        tasks_from: vault_load
       when: cluster_onboard_git_strategy == "branch_pr"
       tags: [vault, git]
 
@@ -143,34 +132,29 @@
     # Step 6: ArgoCD sync
     # =========================================================================
     - name: "Step 6 — Trigger or await ArgoCD sync"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/argocd_sync_cluster.yml"
+      ansible.builtin.include_role:
+        name: acm_cluster_manifest
+        tasks_from: argocd_sync
       tags: [argocd]
 
     # =========================================================================
     # Step 7: Wait for InfrastructureEnv ISO
     # =========================================================================
     - name: "Step 7 — Wait for discovery ISO to be generated"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/wait_infraenv_iso.yml"
+      ansible.builtin.include_role:
+        name: acm_cluster_manifest
+        tasks_from: wait_infraenv
       tags: [infraenv]
 
     # =========================================================================
     # Step 8: BMC ISO mount and cluster installation boot
     # =========================================================================
     - name: "Step 8 — Mount discovery ISO and power cycle nodes for cluster install"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/bmc_virtual_media.yml"
+      ansible.builtin.include_role:
+        name: acm_bmc
+        tasks_from: spoke_boot
       vars:
-        bmc_iso_url: "{{ spoke_discovery_iso_url }}"
-        bmc_nodes: "{{ nodes }}"
-      tags: [bmc, install]
-
-    - name: "Step 8 — Power cycle nodes to boot from discovery ISO"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/bmc_power_control.yml"
-      vars:
-        bmc_nodes: "{{ nodes }}"
+        cluster_onboard_live_iso_url: "{{ spoke_discovery_iso_url }}"
       tags: [bmc, install]
 
     - name: "Onboarding pipeline complete for cluster {{ cluster.name }}"

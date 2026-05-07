@@ -3,16 +3,8 @@
 #
 # Phase 1b: Power cycle hub nodes and wait for OpenShift installation to complete.
 #
-# Plays (in order):
-#   1. hub_nodes  — Set one-time UEFI CD boot override; power cycle each node
-#   2. localhost  — Poll openshift-install agent wait-for install-complete
-#
-# Run after bare_metal_prep.yml has completed successfully. The nodes must have
-# virtual media mounted and the agent ISO staged before this playbook is run.
-#
-# The installer writes cluster credentials to:
-#   {{ install_dir }}/auth/kubeconfig
-#   {{ install_dir }}/auth/kubeadmin-password
+# Run after bare_metal_prep.yml. The agent ISO must already be mounted on each
+# node's iDRAC before this playbook is run.
 #
 # Usage:
 #   ansible-playbook playbooks/bare_metal_install.yml --ask-vault-pass
@@ -24,9 +16,10 @@
     - "../vars/acm_config.yml"
     - "../vars/vault_secrets.yml"
   tasks:
-    - name: "Include BMC power control tasks"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/bmc_power_control.yml"
+    - name: "BMC power cycle"
+      ansible.builtin.include_role:
+        name: acm_bmc
+        tasks_from: power_control
 
 - name: "Wait for OpenShift agent-based installation to complete"
   hosts: localhost
@@ -35,6 +28,7 @@
   vars_files:
     - "../vars/acm_config.yml"
   tasks:
-    - name: "Include installation wait tasks"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/wait_for_install.yml"
+    - name: "Poll for install-complete"
+      ansible.builtin.include_role:
+        name: acm_iso_build
+        tasks_from: wait

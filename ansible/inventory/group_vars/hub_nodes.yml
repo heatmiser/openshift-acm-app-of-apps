@@ -31,4 +31,4 @@ node_interface: "eno1"
 # Post-install SSH
 # =============================================================================
 ansible_user: "ansiblerunner"
-become: true
+ansible_become: true

@@ -1,0 +1,27 @@
+---
+# Role: acm_discovery
+# Always invoke with tasks_from to select the specific operation:
+#
+#   ansible.builtin.include_role:
+#     name: acm_discovery
+#     tasks_from: dns_srv        # Create or remove the SRV record
+#
+#   ansible.builtin.include_role:
+#     name: acm_discovery
+#     tasks_from: listener       # Install deps and start FastAPI listener
+#
+#   ansible.builtin.include_role:
+#     name: acm_discovery
+#     tasks_from: drain          # Long-poll for node callbacks
+#
+#   ansible.builtin.include_role:
+#     name: acm_discovery
+#     tasks_from: hub_correlate  # Match callbacks → hub node hostvars
+#
+#   ansible.builtin.include_role:
+#     name: acm_discovery
+#     tasks_from: spoke_correlate # Match callbacks → spoke node definitions
+#
+#   ansible.builtin.include_role:
+#     name: acm_discovery
+#     tasks_from: report          # Display discovery results and summary

@@ -1,0 +1,96 @@
+---
+# === TEMPLATE RENDERING ===
+# Render all Jinja2 cluster templates into clusters/<name>/. Also patches
+# clusters/cluster-versions.yaml and clusters/hub/values.yaml so ArgoCD
+# picks up the new cluster at its next sync.
+
+- name: "Ensure SSH public key is available for template rendering"
+  ansible.builtin.set_fact:
+    cluster_ssh_public_key: >-
+      {{ lookup('hashi_vault',
+           'secret=' ~ cluster.ssh_key_vault_path ~ ':ssh_public_key
+            url=http://localhost:8200
+            auth_method=token
+            token=' ~ vault_root_token) }}
+
+- name: "Ensure cluster output directory exists — {{ cluster.name }}"
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../../clusters/{{ cluster.name }}"
+    state: directory
+    mode: "0755"
+
+- name: "Ensure cluster nodes output directory exists — {{ cluster.name }}"
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../../clusters/{{ cluster.name }}/nodes"
+    state: directory
+    mode: "0755"
+
+- name: "Render cluster kustomization.yaml — {{ cluster.name }}"
+  ansible.builtin.template:
+    src: "clusters/kustomization.yaml.j2"
+    dest: "{{ playbook_dir }}/../../clusters/{{ cluster.name }}/kustomization.yaml"
+    mode: "0644"
+
+- name: "Render cluster clusterdeployment.yaml — {{ cluster.name }}"
+  ansible.builtin.template:
+    src: "clusters/clusterdeployment.yaml.j2"
+    dest: "{{ playbook_dir }}/../../clusters/{{ cluster.name }}/clusterdeployment.yaml"
+    mode: "0644"
+
+- name: "Render cluster agentclusterinstall.yaml — {{ cluster.name }}"
+  ansible.builtin.template:
+    src: "clusters/agentclusterinstall.yaml.j2"
+    dest: "{{ playbook_dir }}/../../clusters/{{ cluster.name }}/agentclusterinstall.yaml"
+    mode: "0644"
+
+- name: "Render cluster infraenv.yaml — {{ cluster.name }}"
+  ansible.builtin.template:
+    src: "clusters/infraenv.yaml.j2"
+    dest: "{{ playbook_dir }}/../../clusters/{{ cluster.name }}/infraenv.yaml"
+    mode: "0644"
+
+- name: "Render cluster externalsecret-pull-secret.yaml — {{ cluster.name }}"
+  ansible.builtin.template:
+    src: "clusters/externalsecret-pull-secret.yaml.j2"
+    dest: >-
+      {{ playbook_dir }}/../../clusters/{{ cluster.name }}/externalsecret-pull-secret.yaml
+    mode: "0644"
+
+- name: "Render NMStateConfig for {{ item.hostname }}"
+  ansible.builtin.template:
+    src: "clusters/node-nmstate.yaml.j2"
+    dest: >-
+      {{ playbook_dir }}/../../clusters/{{ cluster.name
+      }}/nodes/{{ item.hostname }}-nmstate.yaml
+    mode: "0644"
+  vars:
+    node: "{{ item }}"
+  loop: "{{ nodes }}"
+  loop_control:
+    label: "{{ item.hostname }}"
+
+- name: "Render cluster nodes kustomization.yaml — {{ cluster.name }}"
+  ansible.builtin.template:
+    src: "clusters/nodes-kustomization.yaml.j2"
+    dest: "{{ playbook_dir }}/../../clusters/{{ cluster.name }}/nodes/kustomization.yaml"
+    mode: "0644"
+
+- name: "Add cluster entry to cluster-versions.yaml — {{ cluster.name }}"
+  ansible.builtin.lineinfile:
+    path: "{{ playbook_dir }}/../../clusters/cluster-versions.yaml"
+    insertafter: "^data:"
+    line: "  {{ cluster.name }}: {{ cluster.git_branch }}"
+    state: present
+
+- name: "Add cluster Application to hub values.yaml — {{ cluster.name }}"
+  ansible.builtin.blockinfile:
+    path: "{{ playbook_dir }}/../../clusters/hub/values.yaml"
+    block: "{{ lookup('template', role_path ~ '/templates/clusters/hub-values-entry.yaml.j2') }}"
+    marker: "# {mark} CLUSTER {{ cluster.name | upper }} APPLICATION"
+    insertbefore: EOF
+
+- name: "Template rendering complete for cluster {{ cluster.name }}"
+  ansible.builtin.debug:
+    msg: >-
+      Rendered manifests in clusters/{{ cluster.name }}/ and patched
+      cluster-versions.yaml and clusters/hub/values.yaml.

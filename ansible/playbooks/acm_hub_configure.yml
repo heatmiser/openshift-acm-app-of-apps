@@ -1,21 +1,10 @@
 ---
 # acm_hub_configure.yml
 #
-# Phase 2b: Wait for ArgoCD-managed components to reach ready state, then perform
-# the Vault initialization that cannot be automated via GitOps.
+# Phase 2b: Wait for ArgoCD-managed components, then initialize Vault.
 #
-# ArgoCD deploys components in sync-wave order. This playbook waits for the waves
-# that must complete before Vault can be initialized:
-#
-#   Wave 5  → ACM operator subscription + Vault Helm release
-#   Wave 6  → ESO Helm release (ClusterSecretStore cannot connect until Vault is ready)
-#   Wave 15 → MultiClusterHub CR (requires ACM operator ready)
-#
-# After Vault is initialized and secrets are loaded, the ESO ClusterSecretStore
-# becomes valid and all ExternalSecret CRs begin syncing.
-#
-# Run after acm_hub_bootstrap.yml. The values-secret.yaml file must exist and
-# be populated from ansible/templates/values-secret.yaml.template before running.
+# Run after acm_hub_bootstrap.yml. values-secret.yaml must be populated from
+# ansible/templates/values-secret.yaml.template before running.
 #
 # Usage:
 #   ansible-playbook playbooks/acm_hub_configure.yml
@@ -60,8 +49,6 @@
       retries: "{{ mch_wait_retries }}"
       delay: "{{ mch_wait_delay }}"
 
-    # ACM automatically creates MCE; patch it to enable the Assisted Installer
-    # service required for agent-based managed cluster provisioning.
     - name: "Enable assisted-service on MultiClusterEngine"
       kubernetes.core.k8s:
         state: patched
@@ -128,9 +115,10 @@
       retries: 30
       delay: 20
 
-    - name: "Include Vault initialization tasks"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/vault_init.yml"
+    - name: "Initialize Vault and load secrets"
+      ansible.builtin.include_role:
+        name: acm_platform
+        tasks_from: vault
 
 # =============================================================================
 # Play 3: Confirm ESO ClusterSecretStore is valid post-Vault init

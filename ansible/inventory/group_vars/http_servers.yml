@@ -9,4 +9,4 @@ iso_use_tmpfs: false
 tmpfs_path: "/dev/shm/ocp"
 
 ansible_user: "{{ vault_http_server_user }}"
-become: true
+ansible_become: true

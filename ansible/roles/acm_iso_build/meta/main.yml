@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: acm_iso_build
+  author: heatmiser
+  description: >-
+    Agent-Based Installer ISO generation, HTTP staging, and installation
+    wait for ACM hub cluster provisioning.
+  license: Apache-2.0
+  min_ansible_version: "2.16"
+
+collections:
+  - ansible.posix
+  - community.general
+
+dependencies: []

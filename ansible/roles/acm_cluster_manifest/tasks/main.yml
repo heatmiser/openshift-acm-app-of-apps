@@ -1,0 +1,23 @@
+---
+# Role: acm_cluster_manifest
+# Always invoke with tasks_from to select the specific operation:
+#
+#   ansible.builtin.include_role:
+#     name: acm_cluster_manifest
+#     tasks_from: render          # Render Jinja2 manifests into clusters/<name>/
+#
+#   ansible.builtin.include_role:
+#     name: acm_cluster_manifest
+#     tasks_from: vault_load      # Push spoke secrets into HashiCorp Vault
+#
+#   ansible.builtin.include_role:
+#     name: acm_cluster_manifest
+#     tasks_from: git_commit      # Commit and push manifests (direct or branch_pr)
+#
+#   ansible.builtin.include_role:
+#     name: acm_cluster_manifest
+#     tasks_from: argocd_sync     # Trigger or poll ArgoCD hub Application sync
+#
+#   ansible.builtin.include_role:
+#     name: acm_cluster_manifest
+#     tasks_from: wait_infraenv   # Poll InfrastructureEnv for isoDownloadURL

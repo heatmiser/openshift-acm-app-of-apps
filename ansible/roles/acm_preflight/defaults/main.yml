@@ -1,0 +1,13 @@
+---
+cluster_onboard_preflight_dns_check: true
+cluster_onboard_preflight_cidr_check: true
+
+cluster_onboard_dns_srv_mode: "automated"
+cluster_onboard_dns_srv_domain: ""
+cluster_onboard_mdns_service_name: "_acm-listener._tcp"
+cluster_onboard_dns_bind_server: "127.0.0.1"
+cluster_onboard_dns_bind_port: 53
+
+# Path to existing cluster var files — used for CIDR overlap detection.
+# Defaults to the conventional location relative to the calling playbook.
+cluster_onboard_cluster_vars_dir: "{{ playbook_dir }}/../vars/clusters"

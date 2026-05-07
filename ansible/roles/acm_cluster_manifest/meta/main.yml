@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  role_name: acm_cluster_manifest
+  author: heatmiser
+  description: >-
+    Spoke cluster manifest rendering, Git delivery, ArgoCD sync, InfraEnv
+    polling, and Vault secret loading for ACM cluster onboarding.
+  license: Apache-2.0
+  min_ansible_version: "2.16"
+
+collections:
+  - kubernetes.core
+
+dependencies: []

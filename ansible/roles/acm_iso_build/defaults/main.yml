@@ -1,0 +1,3 @@
+---
+openshift_install_binary: "openshift-install"
+iso_use_tmpfs: false

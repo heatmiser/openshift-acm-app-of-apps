@@ -1,0 +1,15 @@
+---
+# Role: acm_iso_build
+# Always invoke with tasks_from to select the specific operation:
+#
+#   ansible.builtin.include_role:
+#     name: acm_iso_build
+#     tasks_from: generate   # Render templates and invoke openshift-install
+#
+#   ansible.builtin.include_role:
+#     name: acm_iso_build
+#     tasks_from: stage      # Sync ISO to HTTP server (http_servers context)
+#
+#   ansible.builtin.include_role:
+#     name: acm_iso_build
+#     tasks_from: wait       # Poll openshift-install wait-for install-complete
