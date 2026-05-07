@@ -1,0 +1,58 @@
+---
+# === DRAIN REGISTRATION QUEUE ===
+# Long-polls the FastAPI listener for node registration callbacks. Called after
+# nodes have booted from the Live ISO and begun POSTing their hardware facts.
+#
+# Runs in localhost play context. Results are stored in _drain_results which
+# is consumed by the subsequent facts merge task (facts_merge.yml or
+# hub_facts_merge.yml).
+#
+# Variables consumed:
+#   _drain_node_count              — number of nodes expected to register
+#   cluster_onboard_listener_host  — listener IP (default ansible_default_ipv4.address)
+#   cluster_onboard_listener_port  — listener port (default 8080)
+#   cluster_onboard_node_poll_timeout — long-poll timeout per GET /drain (seconds)
+
+# Each GET /drain long-polls for up to cluster_onboard_node_poll_timeout seconds.
+# The loop runs exactly once per expected node. A node that does not register
+# within the timeout causes the task to fail and the playbook stops.
+- name: "Drain registration queue ({{ _drain_node_count }} nodes expected)"
+  ansible.builtin.uri:
+    url: >-
+      http://{{ cluster_onboard_listener_host }}:{{ cluster_onboard_listener_port
+      }}/drain?timeout={{ cluster_onboard_node_poll_timeout }}
+    method: GET
+    return_content: true
+    status_code: 200
+  register: _drain_results
+  loop: "{{ range(_drain_node_count | int) | list }}"
+  loop_control:
+    label: "waiting for node {{ item + 1 }} of {{ _drain_node_count }}"
+  failed_when: _drain_results.json is none
+  delegate_to: localhost
+
+# Add each registered node to the in-memory inventory for SSH-based fact
+# gathering in the subsequent facts merge step.
+- name: "Add registered node {{ item.json.serial }} to inventory"
+  ansible.builtin.add_host:
+    name: "{{ item.json.ip }}"
+    groups: registered_nodes
+    node_serial: "{{ item.json.serial }}"
+    node_mac: "{{ item.json.mac }}"
+    node_interface: "{{ item.json.interface }}"
+    node_ip: "{{ item.json.ip }}"
+    ansible_host: "{{ item.json.ip }}"
+    ansible_user: "{{ ansible_user | default('root') }}"
+  loop: "{{ _drain_results.results }}"
+  loop_control:
+    label: "{{ item.json.serial }}"
+  when: item.json is not none
+
+- name: "All {{ _drain_node_count }} nodes registered"
+  ansible.builtin.debug:
+    msg: >-
+      Registered serials: {{ _drain_results.results
+                             | map(attribute='json')
+                             | selectattr('serial', 'defined')
+                             | map(attribute='serial')
+                             | list }}

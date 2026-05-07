@@ -11,6 +11,8 @@ All configurable variables across the project, organized by file. Required varia
 3. [Global Ansible Settings — `group_vars/all/all.yml`](#3-global-ansible-settings--group_varsallallyml)
 4. [HTTP Staging Server — `group_vars/http_servers.yml`](#4-http-staging-server--group_varshttp_serversyml)
 5. [Operational Config — `vars/acm_config.yml`](#5-operational-config--varsacm_configyml)
+   - [Live ISO Hardware Discovery](#live-iso-hardware-discovery)
+   - [DNS SRV Controller Discovery](#dns-srv-controller-discovery)
 6. [Ansible-Vault Secrets — `vars/vault_secrets.yml`](#6-ansible-vault-secrets--varsvault_secretsyml)
 7. [GitOps Vault Secrets — `values-secret.yaml`](#7-gitops-vault-secrets--values-secretyaml)
 8. [GitOps Values — `groups/all/values.yaml`](#8-gitops-values--groupsallvaluesyaml)
@@ -194,6 +196,26 @@ Loaded explicitly via `vars_files:` in playbooks that need it.
 | `eso_service_account` | `external-secrets` | ESO controller service account name. |
 | `eso_secret_store_name` | `vault-backend` | Name of the ClusterSecretStore pointing at Vault. |
 
+### Live ISO Hardware Discovery
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `cluster_onboard_live_iso_url` | `""` | **Required.** URL of the CentOS Stream Live ISO served from the HTTP staging server. Set before running `bare_metal_prep.yml` or `cluster_onboard.yml`. Example: `http://192.168.1.10/ocp/live-discovery.iso`. See [Live ISO Integration](live-iso-integration.md) for build instructions. |
+
+### DNS SRV Controller Discovery
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `cluster_onboard_dns_srv_mode` | `automated` | `automated` — pipeline creates and removes the SRV record via `nsupdate` against a BIND Podman Quadlet on the controller. `manual` — DNS ops team pre-creates the record; pipeline validates it resolves before booting nodes. |
+| `cluster_onboard_dns_srv_domain` | `""` | **Required.** DNS domain under which the SRV record is published. Must match `ACM_DNS_DOMAIN` in the Live ISO `live-image.conf`. Example: `mgmt.example.com`. Record format: `_acm-listener._tcp.<domain> IN SRV 0 0 <port> <controller-fqdn>.` |
+| `cluster_onboard_mdns_service_name` | `_acm-listener._tcp` | SRV service name. Must match `ACM_LISTENER_SERVICE` in the Live ISO `live-image.conf`. |
+| `cluster_onboard_dns_bind_server` | `127.0.0.1` | IP address of the BIND server for automated mode. Default targets the Podman Quadlet running on the controller's loopback interface. |
+| `cluster_onboard_dns_bind_port` | `53` | BIND server port for automated mode. |
+| `cluster_onboard_dns_tsig_key_name` | `acm-update-key` | TSIG key name for RFC 2136 dynamic updates (automated mode). Must match the key name configured in the BIND zone. |
+| `cluster_onboard_dns_tsig_key_secret` | `{{ vault_dns_tsig_key_secret }}` | TSIG key secret (automated mode). Resolved from `vault_secrets.yml`. Generate with: `tsig-keygen -a hmac-sha256 acm-update-key`. |
+| `cluster_onboard_dns_tsig_key_algorithm` | `hmac-sha256` | TSIG HMAC algorithm for dynamic updates. |
+| `cluster_onboard_listener_fqdn` | `{{ ansible_fqdn }}` | FQDN of the Ansible controller used as the SRV record target hostname. Defaults to the controller's FQDN as reported by Ansible. Override if the controller has multiple interfaces or a specific management FQDN. |
+
 ---
 
 ## 6. Ansible-Vault Secrets — `vars/vault_secrets.yml`
@@ -212,6 +234,7 @@ This file is **ansible-vault encrypted** and must never be committed in plaintex
 | `vault_idrac_password_node3` | Yes | iDRAC password for hub-node3. |
 | `vault_http_server_ip` | Yes | IP address of the HTTP staging server. |
 | `vault_http_server_user` | Yes | SSH user for the HTTP staging server. |
+| `vault_dns_tsig_key_secret` | Automated DNS mode | Base64 TSIG key secret for RFC 2136 dynamic DNS updates. Required when `cluster_onboard_dns_srv_mode: automated`. Generate with `tsig-keygen -a hmac-sha256 acm-update-key` and use the `secret` field value. |
 
 ---
 
