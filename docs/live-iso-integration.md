@@ -32,32 +32,56 @@ The Live ISO is used in two places in this project:
 
 ## 1. How It Works
 
-```
-Ansible controller
-  │
-  ├─ Creates DNS SRV record:
-  │   _acm-listener._tcp.<domain> IN SRV 0 0 8080 <controller-fqdn>.
-  │
-  ├─ Starts FastAPI registration listener on port 8080
-  │
-  └─ Mounts Live ISO via iDRAC → boots nodes
-          │
-          ▼
-  Each node boots Live ISO
-          │
-          ├─ Reads /etc/acm-register.conf (written at ISO build time)
-          ├─ Queries DNS SRV: _acm-listener._tcp.<domain>
-          ├─ Resolves controller IP + port from SRV record
-          ├─ Collects: serial number, MAC, interface name, IP
-          └─ POSTs JSON to http://<controller>:<port>/register
-          │
-          ▼
-  Ansible drains registration queue
-          │
-          ├─ Hub path: correlates to host_vars by serial → updates node.mac
-          │            and node.interface → generates Agent ISO from real facts
-          └─ Spoke path: correlates Redfish serial → renders NMStateConfig,
-                         ClusterDeployment, AgentClusterInstall manifests
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Ansible Controller
+    participant B as BIND DNS
+    participant I as BMC / iDRAC
+    participant N as Live ISO Node
+    participant L as FastAPI Listener
+
+    C->>L: Start registration listener :8080
+
+    alt automated mode
+        C->>B: nsupdate ADD SRV — _acm-listener._tcp.DOMAIN → controller:8080
+        B-->>C: NOERROR
+    else manual mode
+        Note over C,B: DNS ops team pre-creates SRV record
+        Note over C: Pre-flight validates SRV resolves before proceeding
+    end
+
+    loop For each hub or spoke node
+        C->>I: VirtualMediaInsert (Live ISO URL)
+        C->>I: SetOneTimeBoot CD-ROM
+        C->>I: PowerGracefulRestart
+    end
+    Note over I,N: BMC powers on — node boots from virtual CD-ROM
+
+    N->>N: Read /etc/acm-register.conf (ACM_DNS_DOMAIN, ACM_LISTENER_SERVICE)
+    N->>B: dig SRV _acm-listener._tcp.DOMAIN
+    B-->>N: SRV record (port 8080, target: controller-fqdn)
+    N->>B: dig A controller-fqdn
+    B-->>N: Controller IP address
+    N->>N: Collect hardware facts (serial, MAC, interface, IPv4)
+
+    loop Exponential backoff — max 5 attempts (5→10→20→40→80s)
+        N->>L: POST /register {serial, mac, interface, ip}
+        L-->>N: HTTP 200 OK
+    end
+    Note right of N: Exits on first successful 200 OK
+
+    loop One call per expected node
+        C->>L: GET /drain (long-poll)
+        L-->>C: Registration payload {serial, mac, interface, ip}
+    end
+
+    alt automated mode
+        C->>B: nsupdate DELETE SRV record
+        B-->>C: NOERROR
+    end
+
+    Note over C: Hub path — correlate serial → host_vars, generate Agent ISO<br/>Spoke path — correlate serial → render NMStateConfig + cluster manifests
 ```
 
 The Live ISO is built once and reused across all hub and spoke onboarding
@@ -248,6 +272,33 @@ tsig-keygen -a hmac-sha256 acm-update-key
 ---
 
 ## 6. DNS SRV Record Setup
+
+The pipeline supports two modes for managing the SRV record. Both paths converge
+on the same boot and drain flow — they differ only in who creates the record and
+whether it is cleaned up automatically at the end.
+
+```mermaid
+flowchart TD
+    A([Configure pipeline]) --> B{cluster_onboard_dns_srv_mode}
+
+    B -- automated --> C["BIND Podman Quadlet on controller<br/>• Authoritative zone for dns_srv_domain<br/>• TSIG key in vault_secrets.yml"]
+    B -- manual --> D["DNS ops team creates SRV record<br/>_acm-listener._tcp.DOMAIN<br/>60 IN SRV 0 0 8080 controller-fqdn."]
+
+    C --> E[Pipeline: nsupdate ADD SRV record]
+    D --> F[Pre-flight: dig validates SRV resolves]
+
+    E --> G[Boot nodes — Live ISO discovers listener via SRV]
+    F --> G
+
+    G --> H[Drain registration queue]
+
+    H --> I{Automated mode?}
+    I -- yes --> J[Pipeline: nsupdate DELETE SRV record]
+    I -- no --> K[SRV record persists — manual removal by DNS team]
+
+    J --> L([Discovery complete])
+    K --> L
+```
 
 ### Automated mode (BIND Podman Quadlet on controller)
 

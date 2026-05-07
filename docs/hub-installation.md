@@ -370,6 +370,35 @@ ansible-playbook playbooks/acm_hub_configure.yml --ask-vault-pass
 | `acm_hub_bootstrap.yml` | 5–10 min | Applies GitOps Subscription, waits for CSV, applies ArgoCD CR with envsubst sidecar, deploys root Application |
 | `acm_hub_configure.yml` | 30–60 min | Waits for MultiClusterHub Running, initializes Vault (unseal + Kubernetes auth + load secrets), verifies ESO ClusterSecretStore Ready |
 
+### `bare_metal_prep.yml` pipeline detail
+
+The critical design point in `bare_metal_prep.yml` is the two-phase ISO boot sequence:
+nodes boot the **Live ISO first** to discover hardware facts (MAC addresses, interface
+names), and only then is the **Agent-Based Installer ISO generated** — embedding
+the correct hardware configuration. This eliminates manual `host_vars` population.
+
+```mermaid
+flowchart TD
+    Start([bare_metal_prep.yml]) --> A
+
+    subgraph phase1a [" Phase 1a — Live ISO Hardware Discovery "]
+        A["Play 1 — localhost<br/>Create DNS SRV record<br/>Start FastAPI registration listener"] --> B
+        B["Play 2 — hub_nodes<br/>Redfish pre-discovery<br/>Harvest BMC serial numbers via URI"] --> C
+        C["Play 3 — hub_nodes<br/>Mount Live ISO via iDRAC virtual media"] --> D
+        D["Play 4 — hub_nodes<br/>Boot from Live ISO<br/>One-time UEFI CD-ROM boot override"] --> E
+        E["Play 5 — localhost<br/>Drain registration callbacks<br/>Correlate serial → node.mac + node.interface<br/>Remove DNS SRV record"]
+    end
+
+    subgraph phase1b [" Phase 1b — Agent ISO Generation and Install Boot "]
+        F["Play 6 — localhost<br/>Generate Agent-Based Installer ISO<br/>embedding discovered MAC + interface facts"] --> G
+        G["Play 7 — http_servers<br/>Stage ISO on HTTP staging server"] --> H
+        H["Play 8 — hub_nodes<br/>Mount Agent ISO via iDRAC virtual media<br/>Boot into OpenShift installer"]
+    end
+
+    E --> F
+    H --> Done([Continue: bare_metal_install.yml])
+```
+
 ---
 
 ## 10. Verify the Hub Cluster
