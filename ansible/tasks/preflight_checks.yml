@@ -103,8 +103,40 @@
     label: "{{ item.cluster }}"
   when: cluster_onboard_preflight_cidr_check | bool
 
+# === DNS SRV DISCOVERY VALIDATION ===
+# Verify DNS SRV configuration is present and reachable before booting nodes.
+# Nodes that boot the Live ISO will query this record to discover the listener.
+
+- name: "Verify cluster_onboard_dns_srv_domain is set"
+  ansible.builtin.assert:
+    that:
+      - cluster_onboard_dns_srv_domain | length > 0
+    fail_msg: >-
+      cluster_onboard_dns_srv_domain must be set. Nodes boot the Live ISO and
+      query _acm-listener._tcp.<domain> to discover the registration listener.
+      Set this in acm_config.yml or vars/clusters/{{ cluster.name }}.yml.
+
+- name: "Verify BIND server is reachable (automated mode)"
+  ansible.builtin.wait_for:
+    host: "{{ cluster_onboard_dns_bind_server }}"
+    port: "{{ cluster_onboard_dns_bind_port }}"
+    timeout: 5
+  when: cluster_onboard_dns_srv_mode == "automated"
+
+- name: "Verify pre-existing SRV record resolves (manual mode)"
+  when: cluster_onboard_dns_srv_mode == "manual"
+  block:
+    - name: "Query SRV record"
+      ansible.builtin.command:
+        cmd: >-
+          dig +short SRV
+          {{ cluster_onboard_mdns_service_name }}.{{ cluster_onboard_dns_srv_domain }}
+      register: _preflight_srv
+      changed_when: false
+      failed_when: _preflight_srv.stdout | trim | length == 0
+
 - name: "Pre-flight checks passed"
   ansible.builtin.debug:
     msg: >-
-      DNS and CIDR checks passed for cluster {{ cluster.name }}.
+      DNS, CIDR, and SRV checks passed for cluster {{ cluster.name }}.
       Proceeding with hardware discovery.

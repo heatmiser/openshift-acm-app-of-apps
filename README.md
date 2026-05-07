@@ -228,6 +228,7 @@ openshift-acm-app-of-apps/
 | [Spoke Cluster Reference](docs/spoke-cluster-reference.md) | ACM/Hive resource model, prerequisites, planning, monitoring, verification, and GitOps delivery for spoke clusters |
 | [GitOps Delivery Models](docs/gitops-delivery-models.md) | Decentralized, Centralized, and Hybrid model overview, pros/cons, decision guide, and implementation notes |
 | [Cluster Onboarding Pipeline](docs/cluster-onboarding-pipeline.md) | Automated end-to-end onboarding pipeline: hardware discovery, manifest generation, Git strategy, ArgoCD sync strategy |
+| [Live ISO Integration](docs/live-iso-integration.md) | Build and configure the hardware discovery Live ISO: ACM variables, build steps, HTTP staging, DNS SRV setup, variable cross-reference |
 | [Variables Reference](docs/variables-reference.md) | All configurable variables, defaults, and descriptions |
 
 ---

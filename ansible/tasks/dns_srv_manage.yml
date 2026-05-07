@@ -1,0 +1,72 @@
+---
+# === DNS SRV RECORD MANAGEMENT ===
+# Creates or removes the ACM listener SRV record used by Live ISO nodes to
+# discover the registration listener at boot time.
+#
+# Supports two modes (cluster_onboard_dns_srv_mode):
+#   automated — pipeline manages the record via nsupdate against a BIND
+#               container (Podman Quadlet) running on the controller host
+#   manual    — DNS ops team pre-creates the record; pipeline validates it
+#               exists before proceeding (dns_srv_state: present only)
+#
+# Variables consumed:
+#   dns_srv_state                       — "present" | "absent"
+#   cluster_onboard_dns_srv_mode        — "automated" | "manual"
+#   cluster_onboard_dns_srv_domain      — domain under which the SRV record lives
+#   cluster_onboard_mdns_service_name   — SRV service name (_acm-listener._tcp)
+#   cluster_onboard_listener_port       — listener port (default 8080)
+#   cluster_onboard_listener_fqdn       — controller FQDN (SRV target)
+#   cluster_onboard_dns_bind_server     — BIND server IP (automated mode)
+#   cluster_onboard_dns_bind_port       — BIND server port (automated mode)
+#   cluster_onboard_dns_tsig_key_name   — TSIG key name (automated mode)
+#   cluster_onboard_dns_tsig_key_secret — TSIG key secret (automated mode)
+#   cluster_onboard_dns_tsig_key_algorithm — TSIG algorithm (automated mode)
+
+# --- Automated mode: nsupdate via BIND Podman Quadlet ---
+- name: >-
+    {{ 'Create' if dns_srv_state == 'present' else 'Remove' }}
+    ACM listener SRV record via nsupdate (automated mode)
+  community.general.nsupdate:
+    server: "{{ cluster_onboard_dns_bind_server }}"
+    port: "{{ cluster_onboard_dns_bind_port | int }}"
+    key_name: "{{ cluster_onboard_dns_tsig_key_name }}"
+    key_secret: "{{ cluster_onboard_dns_tsig_key_secret }}"
+    key_algorithm: "{{ cluster_onboard_dns_tsig_key_algorithm }}"
+    zone: "{{ cluster_onboard_dns_srv_domain }}."
+    record: "{{ cluster_onboard_mdns_service_name }}"
+    type: "SRV"
+    value: >-
+      0 0 {{ cluster_onboard_listener_port }}
+      {{ cluster_onboard_listener_fqdn }}.
+    ttl: 60
+    state: "{{ dns_srv_state }}"
+  when: cluster_onboard_dns_srv_mode == "automated"
+  no_log: true
+
+- name: "Confirm SRV record {{ dns_srv_state }}"
+  ansible.builtin.debug:
+    msg: >-
+      {{ cluster_onboard_mdns_service_name }}.{{ cluster_onboard_dns_srv_domain }}
+      SRV record is {{ dns_srv_state }} (automated mode).
+  when: cluster_onboard_dns_srv_mode == "automated"
+
+# --- Manual mode: validate the pre-created record resolves ---
+- name: "Validate pre-existing SRV record resolves (manual mode)"
+  when:
+    - cluster_onboard_dns_srv_mode == "manual"
+    - dns_srv_state == "present"
+  block:
+    - name: "Query SRV record for controller discovery"
+      ansible.builtin.command:
+        cmd: >-
+          dig +short SRV
+          {{ cluster_onboard_mdns_service_name }}.{{ cluster_onboard_dns_srv_domain }}
+      register: _srv_check
+      changed_when: false
+      failed_when: _srv_check.stdout | trim | length == 0
+
+    - name: "SRV record validated"
+      ansible.builtin.debug:
+        msg: >-
+          SRV record found: {{ _srv_check.stdout | trim }}
+          Nodes booting the Live ISO will discover the listener via DNS.

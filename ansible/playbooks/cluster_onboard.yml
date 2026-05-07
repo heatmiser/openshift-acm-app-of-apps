@@ -43,15 +43,13 @@
     cluster_onboard_infraenv_poll_delay: 30
     cluster_onboard_listener_port: 8080
     cluster_onboard_listener_host: "{{ ansible_default_ipv4.address }}"
+    cluster_onboard_listener_fqdn: "{{ ansible_fqdn }}"
     cluster_onboard_listener_timeout: 600
     cluster_onboard_node_poll_timeout: 35
     cluster_onboard_preflight_dns_check: true
     cluster_onboard_preflight_cidr_check: true
     cluster_onboard_min_vcpus: 16
     cluster_onboard_min_ram_mb: 32768
-    # URL of the hardware discovery live ISO (served from HTTP server)
-    cluster_onboard_discovery_iso_url: >-
-      http://{{ hostvars[groups['http_servers'][0]]['http_server_base_url'] }}/discovery.iso
     argocd_server: ""
     vault_addr: "https://vault.{{ cluster_name }}.{{ base_domain }}"
 
@@ -73,17 +71,31 @@
       tags: [discovery]
 
     # =========================================================================
-    # Step 2: Start registration listener and boot nodes
+    # Step 2: DNS SRV record, registration listener, Live ISO boot, queue drain
     # =========================================================================
-    - name: "Step 2a — Start node registration listener"
+    - name: "Step 2a — Create DNS SRV record for Live ISO controller discovery"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/dns_srv_manage.yml"
+      vars:
+        dns_srv_state: present
+      tags: [listener, dns]
+
+    - name: "Step 2b — Start node registration listener"
       ansible.builtin.include_tasks:
         file: "{{ playbook_dir }}/../tasks/start_registration_listener.yml"
       tags: [listener]
 
-    - name: "Step 2b — Boot nodes and drain registration callbacks"
+    - name: "Step 2c — Boot nodes and drain registration callbacks"
       ansible.builtin.include_tasks:
         file: "{{ playbook_dir }}/../tasks/callback_queue_drain.yml"
       tags: [listener, drain]
+
+    - name: "Step 2d — Remove DNS SRV record"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/dns_srv_manage.yml"
+      vars:
+        dns_srv_state: absent
+      tags: [listener, dns]
 
     # =========================================================================
     # Step 3: Facts merge and hardware validation

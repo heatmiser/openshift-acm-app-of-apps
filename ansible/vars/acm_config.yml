@@ -59,3 +59,40 @@ vault_hub_role: "hub-role"
 eso_namespace: "external-secrets"
 eso_service_account: "external-secrets"
 eso_secret_store_name: "vault-backend"
+
+# =============================================================================
+# Live ISO hardware discovery (hub and spoke)
+# =============================================================================
+# URL of the CentOS Stream Live ISO used for hardware discovery before the
+# OpenShift installer ISO is generated or the Assisted Installer ISO is mounted.
+# The ISO must be staged on a web server accessible from the controller.
+# Example: http://192.168.1.10/ocp/live-discovery.iso
+cluster_onboard_live_iso_url: ""
+
+# =============================================================================
+# DNS SRV discovery for Live ISO controller phone-home
+# =============================================================================
+# "automated" — pipeline creates and removes the SRV record via RFC 2136
+#               nsupdate against a BIND container (Podman Quadlet) on the
+#               controller host. Requires vault_dns_tsig_key_secret.
+# "manual"    — DNS ops team pre-creates the SRV record. Pipeline validates
+#               the record resolves before booting nodes.
+cluster_onboard_dns_srv_mode: "automated"
+
+# DNS domain under which the SRV record is published.
+# Record format: _acm-listener._tcp.<domain> IN SRV 0 0 <port> <controller-fqdn>.
+# Must be set before running bare_metal_prep.yml or cluster_onboard.yml.
+cluster_onboard_dns_srv_domain: ""
+
+# SRV service name — must match ACM_LISTENER_SERVICE in live-image.conf.
+cluster_onboard_mdns_service_name: "_acm-listener._tcp"
+
+# BIND server address for automated mode (localhost = Podman Quadlet on controller).
+cluster_onboard_dns_bind_server: "127.0.0.1"
+cluster_onboard_dns_bind_port: 53
+
+# TSIG key for RFC 2136 dynamic DNS updates (automated mode only).
+# The key secret is stored in ansible/vars/vault_secrets.yml.
+cluster_onboard_dns_tsig_key_name: "acm-update-key"
+cluster_onboard_dns_tsig_key_secret: "{{ vault_dns_tsig_key_secret }}"
+cluster_onboard_dns_tsig_key_algorithm: "hmac-sha256"

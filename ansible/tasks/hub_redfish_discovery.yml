@@ -1,0 +1,36 @@
+---
+# === HUB REDFISH DISCOVERY ===
+# Queries each hub node's BMC via Redfish to harvest the serial number before
+# the Live ISO boot. The serial number is used as the correlation anchor in
+# hub_facts_merge.yml to match Live ISO callbacks to the correct hub node.
+#
+# Runs in hub_nodes play context — idrac_ip, idrac_user, idrac_password are
+# available from host_vars. All HTTP calls are delegated to localhost.
+#
+# Results are stored as per-host facts (hub_redfish_serial) in hostvars,
+# accessible from the subsequent localhost play via hostvars[h].hub_redfish_serial.
+
+- name: "Query Redfish system info for {{ inventory_hostname }}"
+  ansible.builtin.uri:
+    url: >-
+      https://{{ idrac_ip }}/redfish/v1/Systems/System.Embedded.1
+    method: GET
+    user: "{{ idrac_user }}"
+    password: "{{ idrac_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    return_content: true
+    status_code: 200
+  register: _hub_redfish_system
+  delegate_to: localhost
+  no_log: true
+
+- name: "Store serial number in hostvars for {{ inventory_hostname }}"
+  ansible.builtin.set_fact:
+    hub_redfish_serial: "{{ _hub_redfish_system.json.SerialNumber | trim }}"
+
+- name: "Redfish discovery complete for {{ inventory_hostname }}"
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }} (iDRAC {{ idrac_ip }}):
+      serial={{ hub_redfish_serial }}

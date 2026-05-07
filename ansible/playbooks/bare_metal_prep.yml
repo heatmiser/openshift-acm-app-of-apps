@@ -1,14 +1,25 @@
 ---
 # bare_metal_prep.yml
 #
-# Phase 1a: Prepare bare metal nodes for OpenShift installation.
+# Phase 1: Prepare bare metal hub nodes for OpenShift installation.
 #
-# Plays (in order):
-#   1. localhost     — Template and generate the Agent-Based Installer ISO
-#   2. http_servers  — Stage the ISO on the HTTP server for iDRAC virtual media
-#   3. hub_nodes     — Mount the ISO as virtual media via iDRAC
+# Phase 1a — Live ISO hardware discovery:
+#   Play 1: localhost    — Create DNS SRV record, start registration listener
+#   Play 2: hub_nodes   — Redfish pre-discovery (harvest serial numbers)
+#   Play 3: hub_nodes   — Mount Live ISO via iDRAC virtual media
+#   Play 4: hub_nodes   — Boot nodes from Live ISO (one-time boot override)
+#   Play 5: localhost    — Drain registration callbacks, merge discovered facts
+#                          (MAC + interface) into hub node hostvars, remove SRV
+#
+# Phase 1b — Agent-Based Installer ISO generation and install boot:
+#   Play 6: localhost    — Generate Agent-Based Installer ISO from discovered facts
+#   Play 7: http_servers — Stage the ISO on the HTTP server
+#   Play 8: hub_nodes   — Mount Agent ISO and boot nodes into OpenShift installer
 #
 # Prerequisites:
+#   - BIND Podman Quadlet running on controller (automated DNS SRV mode), OR
+#     DNS SRV record pre-created by DNS ops team (manual mode)
+#   - Live ISO staged and accessible at cluster_onboard_live_iso_url
 #   - openshift-install binary at {{ openshift_install_binary }}
 #   - vars/vault_secrets.yml created and ansible-vault encrypted
 #   - HTTP server reachable and httpd running
@@ -17,7 +28,98 @@
 # Usage:
 #   ansible-playbook playbooks/bare_metal_prep.yml --ask-vault-pass
 
-- name: "Generate Agent-Based Installer ISO"
+# =============================================================================
+# Phase 1a: Live ISO hardware discovery
+# =============================================================================
+
+- name: "Live ISO discovery — create SRV record and start registration listener"
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars_files:
+    - "../vars/acm_config.yml"
+    - "../vars/vault_secrets.yml"
+  vars:
+    cluster_onboard_listener_fqdn: >-
+      {{ cluster_onboard_listener_fqdn | default(ansible_fqdn) }}
+  tasks:
+    - name: "Create DNS SRV record for Live ISO controller discovery"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/dns_srv_manage.yml"
+      vars:
+        dns_srv_state: present
+
+    - name: "Start node registration listener"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/start_registration_listener.yml"
+
+- name: "Live ISO discovery — Redfish serial number pre-discovery"
+  hosts: hub_nodes
+  gather_facts: false
+  vars_files:
+    - "../vars/acm_config.yml"
+    - "../vars/vault_secrets.yml"
+  tasks:
+    - name: "Include hub Redfish discovery tasks"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/hub_redfish_discovery.yml"
+
+- name: "Live ISO discovery — mount Live ISO via iDRAC virtual media"
+  hosts: hub_nodes
+  gather_facts: false
+  vars_files:
+    - "../vars/acm_config.yml"
+    - "../vars/vault_secrets.yml"
+  tasks:
+    - name: "Mount Live ISO as virtual DVD via iDRAC"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/bmc_virtual_media.yml"
+      vars:
+        bmc_iso_url: "{{ cluster_onboard_live_iso_url }}"
+
+- name: "Live ISO discovery — boot hub nodes from Live ISO"
+  hosts: hub_nodes
+  gather_facts: false
+  vars_files:
+    - "../vars/acm_config.yml"
+    - "../vars/vault_secrets.yml"
+  tasks:
+    - name: "Boot nodes from Live ISO"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/bmc_power_control.yml"
+
+- name: "Live ISO discovery — drain callbacks, merge facts, remove SRV record"
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars_files:
+    - "../vars/acm_config.yml"
+    - "../vars/vault_secrets.yml"
+  vars:
+    cluster_onboard_listener_fqdn: >-
+      {{ cluster_onboard_listener_fqdn | default(ansible_fqdn) }}
+  tasks:
+    - name: "Drain node registration callbacks"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/drain_registration_queue.yml"
+      vars:
+        _drain_node_count: "{{ groups['hub_nodes'] | length }}"
+
+    - name: "Merge discovered MAC and interface into hub node hostvars"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/hub_facts_merge.yml"
+
+    - name: "Remove DNS SRV record"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/dns_srv_manage.yml"
+      vars:
+        dns_srv_state: absent
+
+# =============================================================================
+# Phase 1b: Agent-Based Installer ISO generation and install boot
+# =============================================================================
+
+- name: "Generate Agent-Based Installer ISO from discovered facts"
   hosts: localhost
   connection: local
   gather_facts: false
@@ -39,13 +141,19 @@
       ansible.builtin.include_tasks:
         file: "{{ playbook_dir }}/../tasks/iso_staging.yml"
 
-- name: "Mount agent ISO as virtual media via iDRAC"
+- name: "Mount agent ISO and boot hub nodes into OpenShift installer"
   hosts: hub_nodes
   gather_facts: false
   vars_files:
     - "../vars/acm_config.yml"
     - "../vars/vault_secrets.yml"
   tasks:
-    - name: "Include BMC virtual media tasks"
+    - name: "Mount Agent-Based Installer ISO via iDRAC virtual media"
       ansible.builtin.include_tasks:
         file: "{{ playbook_dir }}/../tasks/bmc_virtual_media.yml"
+      vars:
+        bmc_iso_url: "{{ agent_iso_url }}"
+
+    - name: "Boot nodes from Agent-Based Installer ISO"
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/bmc_power_control.yml"
