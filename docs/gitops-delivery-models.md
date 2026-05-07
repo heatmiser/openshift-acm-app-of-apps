@@ -19,27 +19,18 @@ This project is intentionally structured to support three approaches to deliveri
 
 Everything up to the point of workload delivery is identical across all three models:
 
-```
-[Bare metal nodes]
-      │
-      │  Ansible: ISO generation, BMC boot, OCP install
-      ▼
-[Hub Cluster — OpenShift 4.21]
-      │
-      │  ArgoCD app-of-apps cascade (waves 5 → 25)
-      ▼
- ACM + MultiClusterHub
- HashiCorp Vault + ESO
- MetalLB + NMState + cert-manager
- Assisted Installer (AgentServiceConfig)
-      │
-      │  ACM provisions child clusters via Assisted Installer
-      ▼
-[Child Clusters]
-      │
-      │  ◄── THIS is where the models diverge
-      ▼
- How do workloads reach the child clusters?
+```mermaid
+flowchart TD
+    A(["Bare metal nodes"]) --> B
+    B["Ansible<br/>ISO generation · BMC boot · OCP install"] --> C
+    C["Hub Cluster — OpenShift 4.21<br/>ArgoCD app-of-apps cascade (waves 5 → 25)"] --> D
+    D["ACM + MultiClusterHub · Vault + ESO<br/>MetalLB · NMState · cert-manager<br/>Assisted Installer (AgentServiceConfig)"] --> E
+    E(["Child Clusters — provisioned by ACM Assisted Installer"]) --> F
+
+    F{{"Models diverge here<br/>How do workloads reach child clusters after provisioning?"}}
+    F --> G([Decentralized — spoke pulls from Git])
+    F --> H([Centralized — hub pushes via ApplicationSet])
+    F --> I([Hybrid — both, partitioned by workload type])
 ```
 
 The hub cluster installation, ACM configuration, secrets management, and spoke cluster provisioning are the same regardless of which model you choose. The fork in the road is narrow and comes late: it concerns only how GitOps-managed configuration and workloads are delivered *to* spoke clusters after they exist.
@@ -52,19 +43,16 @@ The hub cluster installation, ACM configuration, secrets management, and spoke c
 
 Each managed cluster runs its own ArgoCD instance. ACM acts as the bootstrap mechanism — it delivers the GitOps engine and an initial root Application to the spoke. Once bootstrapped, the spoke's ArgoCD pulls its configuration directly from Git, independent of the hub.
 
-```
-Hub ArgoCD
-  └─ gitops-bootstrap-policy (ACM Policy)
-        │
-        │  ACM propagates to all managed clusters
-        ▼
-  Spoke ArgoCD (per cluster)
-        │
-        │  pulls from Git independently
-        ▼
-  clusters/spoke1/ ──► spoke1 configuration
-  clusters/spoke2/ ──► spoke2 configuration
-  clusters/spoke3/ ──► spoke3 configuration
+```mermaid
+flowchart TD
+    A["Hub ArgoCD"] --> B
+    B["gitops-bootstrap-policy<br/>(ACM Policy)"] --> C
+    C["ACM propagates to all managed clusters"] --> D
+    D["Spoke ArgoCD — one instance per cluster"] --> E
+    E["pulls clusters/spoke-name/ from Git<br/>independent of hub availability"]
+    E --> F["spoke1: clusters/spoke1/ — spoke1 configuration"]
+    E --> G["spoke2: clusters/spoke2/ — spoke2 configuration"]
+    E --> H["spoke3: clusters/spoke3/ — spoke3 configuration"]
 ```
 
 ### Per-Cluster Git Structure
@@ -123,23 +111,19 @@ The spoke's ArgoCD root Application points at `clusters/<spoke-name>` in this re
 
 A single ArgoCD instance runs on the ACM Hub. Spoke clusters are registered as ArgoCD destination endpoints — they do not run their own ArgoCD. The hub ArgoCD uses **ApplicationSets** combined with the **ACM Placement API** to discover managed clusters and push workloads to them. ACM cluster labels and Placement rules drive which workloads go to which clusters.
 
-```
-Hub ArgoCD
-  ├─ ApplicationSet (uses ACM Cluster generator)
-  │       │
-  │       │  generates one Application per matching cluster
-  │       ▼
-  │  Application → spoke1  (pushed by hub)
-  │  Application → spoke2  (pushed by hub)
-  │  Application → spoke3  (pushed by hub)
-  │
-  └─ Reads ACM Placement API to discover cluster membership
-        │
-        │  cluster labels drive targeting
-        ▼
-   env=prod   ──► production workloads
-   env=dev    ──► development workloads
-   region=us  ──► US-region configuration
+```mermaid
+flowchart TD
+    A["Hub ArgoCD"] --> B
+    B["ApplicationSet<br/>(ACM Cluster generator)"] --> C
+    C["generates one Application per matching cluster"]
+    C --> D["Application → spoke1 — pushed by hub"]
+    C --> E["Application → spoke2 — pushed by hub"]
+    C --> F["Application → spoke3 — pushed by hub"]
+
+    G["ACM Placement API<br/>cluster labels drive targeting"] --> B
+    G --> H["env=prod → production workloads"]
+    G --> I["env=dev → development workloads"]
+    G --> J["region=us → US-region configuration"]
 ```
 
 ### ApplicationSet with ACM Cluster Generator
@@ -217,16 +201,20 @@ The hybrid model uses both ArgoCD instances and ApplicationSets simultaneously, 
 - **Decentralized** for cluster-level configuration: operators, CRDs, cluster infrastructure, security policies — configuration that is cluster-specific and where per-cluster control matters
 - **Centralized** for application workloads: shared applications deployed uniformly across multiple clusters, where fleet-wide rollout speed matters more than per-cluster isolation
 
-```
-Hub ArgoCD
-  ├─ ApplicationSet → app-workloads → all env=production clusters (centralized)
-  ├─ ApplicationSet → monitoring    → all clusters (centralized)
-  │
-  └─ gitops-bootstrap-policy ──► Spoke ArgoCD (per cluster, decentralized)
-                                        │
-                                        ▼
-                                  clusters/spoke1/
-                                  (operators, infra, CRDs)
+```mermaid
+flowchart TD
+    A["Hub ArgoCD"] --> B
+    A --> C
+
+    subgraph centralized [" Centralized — application workloads (uniform fleet delivery) "]
+        B["ApplicationSet<br/>app-workloads → all env=production clusters"] --> D["Application → spoke1 (apps)"]
+        B --> E["Application → spoke2 (apps)"]
+        B --> F["Application → spoke3 (apps)"]
+    end
+
+    subgraph decentralized [" Decentralized — cluster configuration (per-cluster isolation) "]
+        C["gitops-bootstrap-policy<br/>(ACM Policy)"] --> G["Spoke ArgoCD — per cluster<br/>pulls clusters/spoke-name/ from Git<br/>(operators · infra · CRDs)"]
+    end
 ```
 
 ### When Hybrid Makes Sense
