@@ -1,0 +1,66 @@
+---
+# === HUB FACTS CORRELATION ===
+# Correlates Live ISO registration callbacks with hub node host_vars using the
+# serial number as the correlation anchor. Updates each hub node's hostvars
+# in-memory with the discovered MAC address and OS interface name.
+#
+# Runs in localhost play context after drain. The hub_redfish_serial fact set
+# by acm_bmc hub_redfish is used as the lookup key.
+
+- name: "Build serial → hub node host lookup"
+  ansible.builtin.set_fact:
+    _hub_serial_to_host: >-
+      {% set d = {} %}
+      {% for h in groups['hub_nodes'] %}
+      {% if hostvars[h]['hub_redfish_serial'] is defined %}
+      {% set _ = d.update({hostvars[h]['hub_redfish_serial']: h}) %}
+      {% endif %}
+      {% endfor %}
+      {{ d }}
+
+- name: "Fail if serial lookup is empty (Redfish discovery may have failed)"
+  ansible.builtin.assert:
+    that:
+      - _hub_serial_to_host | length == groups['hub_nodes'] | length
+    fail_msg: >-
+      Serial → host lookup has {{ _hub_serial_to_host | length }} entries but
+      {{ groups['hub_nodes'] | length }} hub nodes are in inventory. Redfish
+      discovery may have failed for one or more nodes.
+
+- name: "Update hub node hostvars with discovered MAC and interface — {{ _hub_serial_to_host[item.json.serial] }}"
+  ansible.builtin.set_fact:
+    node: >-
+      {{ hostvars[_hub_serial_to_host[item.json.serial]]['node']
+         | combine({'mac': item.json.mac, 'interface': item.json.interface}) }}
+  delegate_to: "{{ _hub_serial_to_host[item.json.serial] }}"
+  delegate_facts: true
+  loop: "{{ _drain_results.results }}"
+  loop_control:
+    label: "{{ item.json.serial }}"
+  when:
+    - item.json is not none
+    - item.json.serial in _hub_serial_to_host
+
+- name: "Fail if any hub node is missing discovered facts"
+  ansible.builtin.assert:
+    that:
+      - hostvars[item]['node']['mac'] | length > 0
+      - hostvars[item]['node']['interface'] | length > 0
+    fail_msg: >-
+      Hub node {{ item }} did not receive a Live ISO callback.
+      mac={{ hostvars[item]['node']['mac'] | default('missing') }}
+      interface={{ hostvars[item]['node']['interface'] | default('missing') }}
+  loop: "{{ groups['hub_nodes'] }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: "Display merged hub node facts"
+  ansible.builtin.debug:
+    msg: >-
+      {{ item }}: hostname={{ hostvars[item]['node']['hostname'] }}
+      ip={{ hostvars[item]['node']['ipv4_address'] }}
+      mac={{ hostvars[item]['node']['mac'] }}
+      interface={{ hostvars[item]['node']['interface'] }}
+  loop: "{{ groups['hub_nodes'] }}"
+  loop_control:
+    label: "{{ item }}"

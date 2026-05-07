@@ -1,0 +1,14 @@
+---
+cluster_onboard_dns_srv_mode: "automated"
+cluster_onboard_dns_srv_domain: ""
+cluster_onboard_mdns_service_name: "_acm-listener._tcp"
+cluster_onboard_dns_bind_server: "127.0.0.1"
+cluster_onboard_dns_bind_port: 53
+cluster_onboard_dns_tsig_key_name: "acm-update-key"
+cluster_onboard_dns_tsig_key_algorithm: "hmac-sha256"
+
+cluster_onboard_listener_port: 8080
+cluster_onboard_listener_host: "{{ ansible_default_ipv4.address }}"
+cluster_onboard_listener_fqdn: "{{ ansible_fqdn }}"
+cluster_onboard_listener_timeout: 600
+cluster_onboard_node_poll_timeout: 35

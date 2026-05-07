@@ -1,0 +1,23 @@
+---
+# Role: acm_bmc
+# Always invoke with tasks_from to select the specific BMC operation:
+#
+#   ansible.builtin.include_role:
+#     name: acm_bmc
+#     tasks_from: virtual_media   # Mount an ISO as virtual DVD (hub_nodes context)
+#
+#   ansible.builtin.include_role:
+#     name: acm_bmc
+#     tasks_from: power_control   # Boot override + power cycle (hub_nodes context)
+#
+#   ansible.builtin.include_role:
+#     name: acm_bmc
+#     tasks_from: hub_redfish     # Harvest serial via Redfish (hub_nodes context)
+#
+#   ansible.builtin.include_role:
+#     name: acm_bmc
+#     tasks_from: spoke_redfish   # Harvest serial + MACs for spoke (localhost context)
+#
+#   ansible.builtin.include_role:
+#     name: acm_bmc
+#     tasks_from: spoke_boot      # Mount ISO + boot spoke nodes (localhost context)

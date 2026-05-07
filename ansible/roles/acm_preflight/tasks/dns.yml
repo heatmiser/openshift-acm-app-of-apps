@@ -1,0 +1,22 @@
+---
+# === DNS RESOLUTION CHECKS ===
+# Verifies that the cluster API and wildcard apps DNS entries resolve before
+# any hardware interaction is attempted.
+
+- name: "Verify API DNS resolution — {{ 'api.' ~ cluster.name ~ '.' ~ cluster.base_domain }}"
+  ansible.builtin.command:
+    cmd: >-
+      dig +short api.{{ cluster.name }}.{{ cluster.base_domain }}
+  register: _dns_api
+  changed_when: false
+  failed_when: _dns_api.stdout | trim == ""
+  when: cluster_onboard_preflight_dns_check | bool
+
+- name: "Verify wildcard apps DNS resolution — {{ '*.apps.' ~ cluster.name ~ '.' ~ cluster.base_domain }}"
+  ansible.builtin.command:
+    cmd: >-
+      dig +short test.apps.{{ cluster.name }}.{{ cluster.base_domain }}
+  register: _dns_apps
+  changed_when: false
+  failed_when: _dns_apps.stdout | trim == ""
+  when: cluster_onboard_preflight_dns_check | bool

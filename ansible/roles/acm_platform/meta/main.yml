@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  role_name: acm_platform
+  author: heatmiser
+  description: >-
+    Hub post-install platform services: OpenShift GitOps bootstrap, ArgoCD
+    root application deployment, and HashiCorp Vault initialization.
+  license: Apache-2.0
+  min_ansible_version: "2.16"
+
+collections:
+  - kubernetes.core
+
+dependencies: []

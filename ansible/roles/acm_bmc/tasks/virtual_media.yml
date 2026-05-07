@@ -1,0 +1,32 @@
+---
+# === BMC VIRTUAL MEDIA MOUNT ===
+# Mounts an ISO as a virtual DVD on each node's iDRAC using the Dell OpenManage
+# collection. force: true ejects any previously mounted media first.
+#
+# Runs in hub_nodes play context; all tasks delegate to localhost since
+# communication is with the iDRAC management IP, not the host OS.
+#
+# Variables consumed:
+#   bmc_iso_url — URL of the ISO to mount (required; no default)
+#   idrac_ip / idrac_user / idrac_password — from host_vars
+
+- name: "Mount ISO as virtual DVD via iDRAC"
+  dellemc.openmanage.idrac_virtual_media:
+    idrac_ip: "{{ idrac_ip }}"
+    idrac_user: "{{ idrac_user }}"
+    idrac_password: "{{ idrac_password }}"
+    validate_certs: "{{ bmc_validate_certs }}"
+    virtual_media:
+      - index: 1
+        insert: true
+        media_type: "DVD"
+        image: "{{ bmc_iso_url }}"
+    force: true
+  delegate_to: localhost
+  no_log: true
+
+- name: "Confirm virtual media is mounted"
+  ansible.builtin.debug:
+    msg: >-
+      Virtual media mounted on {{ inventory_hostname }} (iDRAC {{ idrac_ip }}):
+      {{ bmc_iso_url }}

@@ -7,43 +7,16 @@
 # to the console. No provisioning steps are performed — no ISO generation,
 # no manifest rendering, no Git commits, no Vault loading.
 #
-# Designed for:
-#   - Validating Live ISO phone-home in a new environment before formal install
-#   - Pre-flight verification of DNS SRV configuration
-#   - Troubleshooting registration failures without risk to cluster state
-#   - Documenting discovered hardware facts before entering them in host_vars
-#
 # ─── MODES ────────────────────────────────────────────────────────────────────
 #
 #  Full mode (default):
-#    Runs Redfish serial discovery, creates DNS SRV record, starts listener,
-#    mounts Live ISO via iDRAC, boots nodes, drains registration queue,
-#    correlates results to inventory by serial number, displays report.
-#
 #    ansible-playbook playbooks/live_iso_discovery.yml --ask-vault-pass
 #
 #  Listener-only mode (-e skip_bmc_boot=true):
-#    Skips Redfish discovery and BMC boot. Starts the listener and waits for
-#    manually triggered registrations. Useful for testing acm-register.sh on
-#    a VM or node that is already booted from the Live ISO. Supply the expected
-#    number of nodes via -e expected_node_count=N (defaults to hub_nodes count).
-#
 #    ansible-playbook playbooks/live_iso_discovery.yml \
 #      -e skip_bmc_boot=true \
 #      -e expected_node_count=1 \
 #      --ask-vault-pass
-#
-# ─── PREREQUISITES ────────────────────────────────────────────────────────────
-#
-#   - vars/acm_config.yml: cluster_onboard_live_iso_url, cluster_onboard_dns_srv_domain
-#   - vars/vault_secrets.yml: vault_dns_tsig_key_secret (automated DNS mode)
-#   - Live ISO staged and accessible at cluster_onboard_live_iso_url
-#   - BIND Podman Quadlet running (automated DNS mode) OR SRV record pre-created
-#   - iDRAC management network reachable from Ansible controller (full mode)
-#
-# ─── SEE ALSO ─────────────────────────────────────────────────────────────────
-#   docs/live-iso-integration.md — ISO build and staging instructions
-#   docs/variables-reference.md  — DNS SRV variable reference
 
 # =============================================================================
 # Play 1: Create DNS SRV record and start registration listener
@@ -59,30 +32,18 @@
   vars:
     skip_bmc_boot: false
     expected_node_count: "{{ groups['hub_nodes'] | length }}"
-    cluster_onboard_listener_fqdn: >-
-      {{ cluster_onboard_listener_fqdn | default(ansible_fqdn) }}
-    cluster_onboard_listener_port: >-
-      {{ cluster_onboard_listener_port | default(8080) }}
-    cluster_onboard_listener_host: >-
-      {{ cluster_onboard_listener_host | default(ansible_default_ipv4.address) }}
-    cluster_onboard_listener_timeout: >-
-      {{ cluster_onboard_listener_timeout | default(600) }}
-    cluster_onboard_node_poll_timeout: >-
-      {{ cluster_onboard_node_poll_timeout | default(35) }}
   tasks:
     - name: "Validate cluster_onboard_dns_srv_domain is set"
       ansible.builtin.assert:
         that: cluster_onboard_dns_srv_domain | length > 0
         fail_msg: >-
           cluster_onboard_dns_srv_domain must be set in vars/acm_config.yml.
-          Nodes query _acm-listener._tcp.<domain> to discover the listener.
 
     - name: "Validate cluster_onboard_live_iso_url is set (full mode)"
       ansible.builtin.assert:
         that: cluster_onboard_live_iso_url | length > 0
         fail_msg: >-
           cluster_onboard_live_iso_url must be set in vars/acm_config.yml.
-          Set this to the HTTP URL where the Live ISO is staged.
       when: not (skip_bmc_boot | bool)
 
     - name: "Display discovery mode"
@@ -96,14 +57,16 @@
           domain: {{ cluster_onboard_dns_srv_domain }})
 
     - name: "Create DNS SRV record for controller discovery"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/dns_srv_manage.yml"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: dns_srv
       vars:
         dns_srv_state: present
 
     - name: "Start node registration listener"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/start_registration_listener.yml"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: listener
 
 # =============================================================================
 # Play 2: Redfish serial number pre-discovery (full mode only)
@@ -119,8 +82,9 @@
     skip_bmc_boot: false
   tasks:
     - name: "Run hub Redfish pre-discovery"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/hub_redfish_discovery.yml"
+      ansible.builtin.include_role:
+        name: acm_bmc
+        tasks_from: hub_redfish
       when: not (skip_bmc_boot | bool)
 
 # =============================================================================
@@ -137,8 +101,9 @@
     skip_bmc_boot: false
   tasks:
     - name: "Mount Live ISO as virtual DVD via iDRAC"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/bmc_virtual_media.yml"
+      ansible.builtin.include_role:
+        name: acm_bmc
+        tasks_from: virtual_media
       vars:
         bmc_iso_url: "{{ cluster_onboard_live_iso_url }}"
       when: not (skip_bmc_boot | bool)
@@ -157,8 +122,9 @@
     skip_bmc_boot: false
   tasks:
     - name: "Boot nodes from Live ISO"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/bmc_power_control.yml"
+      ansible.builtin.include_role:
+        name: acm_bmc
+        tasks_from: power_control
       when: not (skip_bmc_boot | bool)
 
     - name: "Listener-only mode — waiting for manual registrations"
@@ -185,18 +151,11 @@
   vars:
     skip_bmc_boot: false
     expected_node_count: "{{ groups['hub_nodes'] | length }}"
-    cluster_onboard_listener_fqdn: >-
-      {{ cluster_onboard_listener_fqdn | default(ansible_fqdn) }}
-    cluster_onboard_listener_port: >-
-      {{ cluster_onboard_listener_port | default(8080) }}
-    cluster_onboard_listener_host: >-
-      {{ cluster_onboard_listener_host | default(ansible_default_ipv4.address) }}
-    cluster_onboard_node_poll_timeout: >-
-      {{ cluster_onboard_node_poll_timeout | default(35) }}
   tasks:
     - name: "Drain node registration callbacks"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/drain_registration_queue.yml"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: drain
       vars:
         _drain_node_count: "{{ expected_node_count }}"
 
@@ -213,13 +172,15 @@
       when: not (skip_bmc_boot | bool)
 
     - name: "Display discovery report"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/discovery_report.yml"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: report
       vars:
         _drain_node_count: "{{ expected_node_count }}"
 
     - name: "Remove DNS SRV record"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/dns_srv_manage.yml"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: dns_srv
       vars:
         dns_srv_state: absent

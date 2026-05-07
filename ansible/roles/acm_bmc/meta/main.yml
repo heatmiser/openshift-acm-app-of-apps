@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: acm_bmc
+  author: heatmiser
+  description: >-
+    BMC/Redfish/iDRAC operations for ACM hub and spoke cluster provisioning:
+    virtual media mount, power control, and serial number discovery.
+  license: Apache-2.0
+  min_ansible_version: "2.16"
+
+collections:
+  - dellemc.openmanage
+  - community.general
+
+dependencies: []

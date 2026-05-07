@@ -16,15 +16,6 @@
 #   Play 7: http_servers — Stage the ISO on the HTTP server
 #   Play 8: hub_nodes   — Mount Agent ISO and boot nodes into OpenShift installer
 #
-# Prerequisites:
-#   - BIND Podman Quadlet running on controller (automated DNS SRV mode), OR
-#     DNS SRV record pre-created by DNS ops team (manual mode)
-#   - Live ISO staged and accessible at cluster_onboard_live_iso_url
-#   - openshift-install binary at {{ openshift_install_binary }}
-#   - vars/vault_secrets.yml created and ansible-vault encrypted
-#   - HTTP server reachable and httpd running
-#   - iDRAC management network reachable from Ansible controller
-#
 # Usage:
 #   ansible-playbook playbooks/bare_metal_prep.yml --ask-vault-pass
 
@@ -39,19 +30,18 @@
   vars_files:
     - "../vars/acm_config.yml"
     - "../vars/vault_secrets.yml"
-  vars:
-    cluster_onboard_listener_fqdn: >-
-      {{ cluster_onboard_listener_fqdn | default(ansible_fqdn) }}
   tasks:
     - name: "Create DNS SRV record for Live ISO controller discovery"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/dns_srv_manage.yml"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: dns_srv
       vars:
         dns_srv_state: present
 
     - name: "Start node registration listener"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/start_registration_listener.yml"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: listener
 
 - name: "Live ISO discovery — Redfish serial number pre-discovery"
   hosts: hub_nodes
@@ -60,9 +50,10 @@
     - "../vars/acm_config.yml"
     - "../vars/vault_secrets.yml"
   tasks:
-    - name: "Include hub Redfish discovery tasks"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/hub_redfish_discovery.yml"
+    - name: "Harvest serial number via Redfish"
+      ansible.builtin.include_role:
+        name: acm_bmc
+        tasks_from: hub_redfish
 
 - name: "Live ISO discovery — mount Live ISO via iDRAC virtual media"
   hosts: hub_nodes
@@ -72,8 +63,9 @@
     - "../vars/vault_secrets.yml"
   tasks:
     - name: "Mount Live ISO as virtual DVD via iDRAC"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/bmc_virtual_media.yml"
+      ansible.builtin.include_role:
+        name: acm_bmc
+        tasks_from: virtual_media
       vars:
         bmc_iso_url: "{{ cluster_onboard_live_iso_url }}"
 
@@ -85,8 +77,9 @@
     - "../vars/vault_secrets.yml"
   tasks:
     - name: "Boot nodes from Live ISO"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/bmc_power_control.yml"
+      ansible.builtin.include_role:
+        name: acm_bmc
+        tasks_from: power_control
 
 - name: "Live ISO discovery — drain callbacks, merge facts, remove SRV record"
   hosts: localhost
@@ -95,23 +88,23 @@
   vars_files:
     - "../vars/acm_config.yml"
     - "../vars/vault_secrets.yml"
-  vars:
-    cluster_onboard_listener_fqdn: >-
-      {{ cluster_onboard_listener_fqdn | default(ansible_fqdn) }}
   tasks:
     - name: "Drain node registration callbacks"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/drain_registration_queue.yml"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: drain
       vars:
         _drain_node_count: "{{ groups['hub_nodes'] | length }}"
 
     - name: "Merge discovered MAC and interface into hub node hostvars"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/hub_facts_merge.yml"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: hub_correlate
 
     - name: "Remove DNS SRV record"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/dns_srv_manage.yml"
+      ansible.builtin.include_role:
+        name: acm_discovery
+        tasks_from: dns_srv
       vars:
         dns_srv_state: absent
 
@@ -127,9 +120,10 @@
     - "../vars/acm_config.yml"
     - "../vars/vault_secrets.yml"
   tasks:
-    - name: "Include agent ISO generation tasks"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/generate_agent_iso.yml"
+    - name: "Generate agent ISO"
+      ansible.builtin.include_role:
+        name: acm_iso_build
+        tasks_from: generate
 
 - name: "Stage agent ISO on HTTP server"
   hosts: http_servers
@@ -137,9 +131,10 @@
   vars_files:
     - "../vars/acm_config.yml"
   tasks:
-    - name: "Include ISO staging tasks"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/iso_staging.yml"
+    - name: "Sync ISO to HTTP staging server"
+      ansible.builtin.include_role:
+        name: acm_iso_build
+        tasks_from: stage
 
 - name: "Mount agent ISO and boot hub nodes into OpenShift installer"
   hosts: hub_nodes
@@ -149,11 +144,13 @@
     - "../vars/vault_secrets.yml"
   tasks:
     - name: "Mount Agent-Based Installer ISO via iDRAC virtual media"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/bmc_virtual_media.yml"
+      ansible.builtin.include_role:
+        name: acm_bmc
+        tasks_from: virtual_media
       vars:
         bmc_iso_url: "{{ agent_iso_url }}"
 
     - name: "Boot nodes from Agent-Based Installer ISO"
-      ansible.builtin.include_tasks:
-        file: "{{ playbook_dir }}/../tasks/bmc_power_control.yml"
+      ansible.builtin.include_role:
+        name: acm_bmc
+        tasks_from: power_control

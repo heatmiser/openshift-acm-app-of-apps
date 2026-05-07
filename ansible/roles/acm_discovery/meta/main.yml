@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: acm_discovery
+  author: heatmiser
+  description: >-
+    Live ISO phone-home discovery lifecycle for ACM cluster provisioning:
+    DNS SRV record management, FastAPI registration listener, queue drain,
+    fact correlation, and hardware discovery report.
+  license: Apache-2.0
+  min_ansible_version: "2.16"
+
+collections:
+  - community.general
+
+dependencies: []

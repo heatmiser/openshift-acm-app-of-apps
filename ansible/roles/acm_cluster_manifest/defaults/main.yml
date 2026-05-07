@@ -1,0 +1,10 @@
+---
+cluster_onboard_git_strategy: "direct"
+cluster_onboard_git_branch_prefix: "cluster-onboard"
+cluster_onboard_git_pr_auto_merge: false
+cluster_onboard_argocd_sync_strategy: "trigger"
+cluster_onboard_infraenv_poll_retries: 40
+cluster_onboard_infraenv_poll_delay: 30
+cluster_onboard_min_vcpus: 16
+cluster_onboard_min_ram_mb: 32768
+argocd_server: ""

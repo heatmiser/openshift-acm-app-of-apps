@@ -1,0 +1,70 @@
+---
+# === SPOKE BMC BOOT (LIVE ISO) ===
+# Mounts the Live ISO on all spoke node BMCs, sets a one-time CD boot override,
+# and power-cycles nodes in parallel. After this task completes, call
+# acm_discovery drain to collect node registration callbacks.
+#
+# Runs in localhost play context; all Redfish calls target BMC IPs directly.
+#
+# Variables consumed:
+#   nodes                       — list of spoke node defs (from cluster config)
+#   cluster_onboard_live_iso_url — URL of the Live ISO
+
+- name: "Mount hardware discovery ISO via iDRAC virtual media — {{ item.hostname }}"
+  community.general.redfish_command:
+    category: Manager
+    command: VirtualMediaInsert
+    baseuri: "{{ item.bmc.ip }}"
+    username: "{{ item.bmc.user }}"
+    password: "{{ item.bmc.password }}"
+    virtual_media:
+      image_url: "{{ cluster_onboard_live_iso_url }}"
+      media_types:
+        - CD
+      inserted: true
+      write_protected: true
+    resource_id: iDRAC.Embedded.1
+  delegate_to: localhost
+  loop: "{{ nodes }}"
+  loop_control:
+    label: "{{ item.hostname }}"
+
+- name: "Set one-time UEFI boot from virtual CD-ROM on {{ item.hostname }}"
+  community.general.redfish_command:
+    category: Systems
+    command: SetOneTimeBoot
+    baseuri: "{{ item.bmc.ip }}"
+    username: "{{ item.bmc.user }}"
+    password: "{{ item.bmc.password }}"
+    bootdevice: Cd
+  delegate_to: localhost
+  loop: "{{ nodes }}"
+  loop_control:
+    label: "{{ item.hostname }}"
+
+- name: "Power cycle node to boot from discovery ISO — {{ item.hostname }}"
+  community.general.redfish_command:
+    category: Systems
+    command: PowerGracefulRestart
+    baseuri: "{{ item.bmc.ip }}"
+    username: "{{ item.bmc.user }}"
+    password: "{{ item.bmc.password }}"
+  delegate_to: localhost
+  loop: "{{ nodes }}"
+  loop_control:
+    label: "{{ item.hostname }}"
+  ignore_errors: true
+  register: _graceful_restart
+
+- name: "Power on node (was already off) — {{ item.item.hostname }}"
+  community.general.redfish_command:
+    category: Systems
+    command: PowerOn
+    baseuri: "{{ item.item.bmc.ip }}"
+    username: "{{ item.item.bmc.user }}"
+    password: "{{ item.item.bmc.password }}"
+  delegate_to: localhost
+  loop: "{{ _graceful_restart.results }}"
+  loop_control:
+    label: "{{ item.item.hostname }}"
+  when: item.failed | bool

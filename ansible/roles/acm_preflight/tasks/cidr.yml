@@ -1,0 +1,82 @@
+---
+# === CIDR OVERLAP DETECTION ===
+# Loads all existing cluster configs and checks that the new cluster's machine,
+# cluster, and service networks do not overlap any already-deployed cluster.
+
+- name: "Collect existing cluster config files"
+  ansible.builtin.find:
+    paths: "{{ cluster_onboard_cluster_vars_dir }}"
+    patterns: "*.yml"
+    excludes: "{{ cluster_config | basename }}"
+  register: _existing_cluster_files
+  when: cluster_onboard_preflight_cidr_check | bool
+
+- name: "Load existing cluster configs for CIDR comparison"
+  ansible.builtin.include_vars:
+    file: "{{ item.path }}"
+    name: "_existing_cluster_{{ loop.index }}"
+  loop: "{{ _existing_cluster_files.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: cluster_onboard_preflight_cidr_check | bool
+
+- name: "Build list of existing CIDRs to compare"
+  ansible.builtin.set_fact:
+    _existing_cidrs: >-
+      {{
+        _existing_cidrs | default([]) +
+        [
+          {
+            'cluster': lookup('vars', '_existing_cluster_' ~ loop.index).cluster.name,
+            'machine': lookup('vars', '_existing_cluster_' ~ loop.index).cluster.machine_network_cidr,
+            'cluster_net': lookup('vars', '_existing_cluster_' ~ loop.index).cluster.cluster_network_cidr,
+            'service': lookup('vars', '_existing_cluster_' ~ loop.index).cluster.service_network_cidr
+          }
+        ]
+      }}
+  loop: "{{ _existing_cluster_files.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: cluster_onboard_preflight_cidr_check | bool
+
+- name: "Check machine network does not overlap existing clusters"
+  ansible.builtin.assert:
+    that:
+      - >-
+        cluster.machine_network_cidr | ansible.utils.ipaddr(item.machine) == false
+    fail_msg: >-
+      machine_network_cidr {{ cluster.machine_network_cidr }} overlaps with
+      cluster {{ item.cluster }} ({{ item.machine }})
+    quiet: true
+  loop: "{{ _existing_cidrs | default([]) }}"
+  loop_control:
+    label: "{{ item.cluster }}"
+  when: cluster_onboard_preflight_cidr_check | bool
+
+- name: "Check cluster network does not overlap existing clusters"
+  ansible.builtin.assert:
+    that:
+      - >-
+        cluster.cluster_network_cidr | ansible.utils.ipaddr(item.cluster_net) == false
+    fail_msg: >-
+      cluster_network_cidr {{ cluster.cluster_network_cidr }} overlaps with
+      cluster {{ item.cluster }} ({{ item.cluster_net }})
+    quiet: true
+  loop: "{{ _existing_cidrs | default([]) }}"
+  loop_control:
+    label: "{{ item.cluster }}"
+  when: cluster_onboard_preflight_cidr_check | bool
+
+- name: "Check service network does not overlap existing clusters"
+  ansible.builtin.assert:
+    that:
+      - >-
+        cluster.service_network_cidr | ansible.utils.ipaddr(item.service) == false
+    fail_msg: >-
+      service_network_cidr {{ cluster.service_network_cidr }} overlaps with
+      cluster {{ item.cluster }} ({{ item.service }})
+    quiet: true
+  loop: "{{ _existing_cidrs | default([]) }}"
+  loop_control:
+    label: "{{ item.cluster }}"
+  when: cluster_onboard_preflight_cidr_check | bool

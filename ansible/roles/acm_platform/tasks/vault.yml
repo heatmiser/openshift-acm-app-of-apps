@@ -1,0 +1,212 @@
+---
+# === VAULT INITIALIZATION ===
+# Initializes HashiCorp Vault (if not already done), unseals it, configures
+# Kubernetes auth for ESO, creates policies and roles, then loads secrets from
+# the local values-secret.yaml file into Vault KV v2.
+
+- name: "Get Vault Route"
+  kubernetes.core.k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    name: vault
+    namespace: "{{ vault_namespace }}"
+  register: vault_route_result
+
+- name: "Set Vault address"
+  ansible.builtin.set_fact:
+    vault_addr: "https://{{ vault_route_result.resources[0].spec.host }}"
+
+- name: "Check Vault initialization status"
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/init"
+    method: GET
+    validate_certs: false
+    status_code: 200
+  register: vault_init_status
+  changed_when: false
+
+- name: "Initialize Vault"
+  when: not vault_init_status.json.initialized
+  block:
+    - name: "Run vault operator init"
+      kubernetes.core.k8s_exec:
+        namespace: "{{ vault_namespace }}"
+        pod: vault-0
+        command:
+          - vault
+          - operator
+          - init
+          - "-format=json"
+          - "-key-shares=5"
+          - "-key-threshold=3"
+      register: vault_init_exec
+      changed_when: true
+      no_log: true
+
+    - name: "Store Vault init output as Kubernetes Secret"
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: vaultkeys
+            namespace: "{{ vault_namespace }}"
+          type: Opaque
+          stringData:
+            vault_init.json: "{{ vault_init_exec.stdout }}"
+      no_log: true
+
+- name: "Retrieve vaultkeys Secret"
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: vaultkeys
+    namespace: "{{ vault_namespace }}"
+  register: vaultkeys_secret_result
+  no_log: true
+
+- name: "Parse stored Vault init data"
+  ansible.builtin.set_fact:
+    vault_init_data: >-
+      {{ vaultkeys_secret_result.resources[0].data['vault_init.json']
+         | b64decode | from_json }}
+  no_log: true
+
+- name: "Check current seal status"
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/seal-status"
+    method: GET
+    validate_certs: false
+    status_code: 200
+  register: vault_seal_status
+  changed_when: false
+
+- name: "Unseal Vault with stored keys"
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/unseal"
+    method: PUT
+    validate_certs: false
+    body_format: json
+    body:
+      key: "{{ item }}"
+    status_code: 200
+  loop: "{{ vault_init_data.unseal_keys_b64[:3] }}"
+  when: vault_seal_status.json.sealed
+  changed_when: true
+  no_log: true
+
+- name: "Enable KV v2 secrets engine at path '{{ vault_kv_mount }}'"
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/mounts/{{ vault_kv_mount }}"
+    method: POST
+    validate_certs: false
+    headers:
+      X-Vault-Token: "{{ vault_init_data.root_token }}"
+    body_format: json
+    body:
+      type: kv
+      options:
+        version: "2"
+    status_code: [200, 204, 400]
+  register: kv_mount_result
+  changed_when: kv_mount_result.status in [200, 204]
+  no_log: true
+
+- name: "Enable Kubernetes auth method for hub cluster"
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/auth/{{ vault_hub_auth_mount }}"
+    method: POST
+    validate_certs: false
+    headers:
+      X-Vault-Token: "{{ vault_init_data.root_token }}"
+    body_format: json
+    body:
+      type: kubernetes
+    status_code: [200, 204, 400]
+  register: auth_mount_result
+  changed_when: auth_mount_result.status in [200, 204]
+  no_log: true
+
+- name: "Configure Kubernetes auth with in-cluster SA token and CA"
+  kubernetes.core.k8s_exec:
+    namespace: "{{ vault_namespace }}"
+    pod: vault-0
+    command:
+      - sh
+      - "-c"
+      - >-
+        VAULT_TOKEN={{ vault_init_data.root_token }}
+        vault write auth/{{ vault_hub_auth_mount }}/config
+        kubernetes_host=https://kubernetes.default.svc
+        kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token
+  changed_when: true
+  no_log: true
+
+- name: "Create hub-policy (read hub + global secrets)"
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/policies/acl/hub-policy"
+    method: PUT
+    validate_certs: false
+    headers:
+      X-Vault-Token: "{{ vault_init_data.root_token }}"
+    body_format: json
+    body:
+      policy: |
+        path "{{ vault_kv_mount }}/data/hub/*" {
+          capabilities = ["read", "list"]
+        }
+        path "{{ vault_kv_mount }}/data/global/*" {
+          capabilities = ["read", "list"]
+        }
+    status_code: [200, 204]
+  changed_when: true
+  no_log: true
+
+- name: "Create hub-role binding ESO service account to hub-policy"
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/auth/{{ vault_hub_auth_mount }}/role/{{ vault_hub_role }}"
+    method: POST
+    validate_certs: false
+    headers:
+      X-Vault-Token: "{{ vault_init_data.root_token }}"
+    body_format: json
+    body:
+      bound_service_account_names:
+        - "{{ eso_service_account }}"
+      bound_service_account_namespaces:
+        - "{{ eso_namespace }}"
+      policies:
+        - hub-policy
+      ttl: "1h"
+    status_code: [200, 204]
+  changed_when: true
+  no_log: true
+
+- name: "Load local values-secret.yaml"
+  ansible.builtin.set_fact:
+    vault_secrets: "{{ lookup('ansible.builtin.file', playbook_dir + '/../values-secret.yaml') | from_yaml }}"
+  no_log: true
+
+- name: "Push secrets into Vault KV v2"
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/{{ item.vault_path | replace('secret/', vault_kv_mount + '/data/', 1) }}"
+    method: POST
+    validate_certs: false
+    headers:
+      X-Vault-Token: "{{ vault_init_data.root_token }}"
+    body_format: json
+    body:
+      data: "{{ item.fields }}"
+    status_code: [200, 204]
+  loop: "{{ vault_secrets | dict2items | map(attribute='value') | list }}"
+  changed_when: true
+  no_log: true
+
+- name: "Vault initialization complete"
+  ansible.builtin.debug:
+    msg: >-
+      Vault initialized, unsealed, Kubernetes auth configured, and secrets
+      loaded. ESO ClusterSecretStore '{{ eso_secret_store_name }}' can now
+      sync secrets from Vault path '{{ vault_kv_mount }}/'

@@ -1,0 +1,14 @@
+---
+# ansible-lint configuration
+# https://ansible-lint.readthedocs.io/configuring/
+
+profile: min
+
+skip_list:
+  # Project-wide cluster_onboard_* and bmc_* variables are intentionally
+  # shared across roles and defined in vars/acm_config.yml, not role defaults.
+  # Enforcing per-role prefixes would break the shared configuration model.
+  - var-naming[no-role-prefix]
+
+warn_list:
+  - command-instead-of-shell

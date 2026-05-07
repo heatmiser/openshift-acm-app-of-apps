@@ -1,0 +1,47 @@
+---
+# === DNS SRV RECORD MANAGEMENT ===
+# Creates or removes the ACM listener SRV record used by Live ISO nodes to
+# discover the registration listener at boot time.
+#
+# Variables consumed:
+#   dns_srv_state                         — "present" | "absent"
+#   cluster_onboard_dns_srv_mode          — "automated" | "manual"
+#   cluster_onboard_dns_srv_domain        — DNS domain for the SRV record
+#   cluster_onboard_mdns_service_name     — SRV service name (_acm-listener._tcp)
+#   cluster_onboard_listener_port         — listener port
+#   cluster_onboard_listener_fqdn         — controller FQDN (SRV target)
+#   cluster_onboard_dns_bind_server       — BIND server IP (automated mode)
+#   cluster_onboard_dns_bind_port         — BIND server port (automated mode)
+#   cluster_onboard_dns_tsig_key_name     — TSIG key name (automated mode)
+#   cluster_onboard_dns_tsig_key_secret   — TSIG key secret (automated mode)
+#   cluster_onboard_dns_tsig_key_algorithm — TSIG algorithm (automated mode)
+
+- name: "Manage ACM listener SRV record (automated mode)"
+  when: cluster_onboard_dns_srv_mode == "automated"
+  community.general.nsupdate:
+    server: "{{ cluster_onboard_dns_bind_server }}"
+    port: "{{ cluster_onboard_dns_bind_port | int }}"
+    key_name: "{{ cluster_onboard_dns_tsig_key_name }}"
+    key_secret: "{{ cluster_onboard_dns_tsig_key_secret }}"
+    key_algorithm: "{{ cluster_onboard_dns_tsig_key_algorithm }}"
+    zone: "{{ cluster_onboard_dns_srv_domain }}."
+    record: "{{ cluster_onboard_mdns_service_name }}"
+    type: "SRV"
+    value: >-
+      0 0 {{ cluster_onboard_listener_port }}
+      {{ cluster_onboard_listener_fqdn }}.
+    ttl: 60
+    state: "{{ dns_srv_state }}"
+
+- name: "Validate SRV record resolves (manual mode — present only)"
+  when:
+    - cluster_onboard_dns_srv_mode == "manual"
+    - dns_srv_state == "present"
+  block:
+    - name: "Query SRV record for controller discovery"
+      ansible.builtin.command: >-
+        dig +short SRV
+        {{ cluster_onboard_mdns_service_name }}.{{ cluster_onboard_dns_srv_domain }}
+      register: _srv_check
+      changed_when: false
+      failed_when: _srv_check.stdout | length == 0

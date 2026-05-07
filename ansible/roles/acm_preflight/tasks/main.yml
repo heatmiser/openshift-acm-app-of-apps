@@ -1,0 +1,26 @@
+---
+# Role: acm_preflight
+# Always invoke with tasks_from to select the specific check set:
+#
+#   ansible.builtin.include_role:
+#     name: acm_preflight
+#     tasks_from: dns          # API + apps DNS resolution
+#
+#   ansible.builtin.include_role:
+#     name: acm_preflight
+#     tasks_from: cidr         # CIDR overlap detection across clusters
+#
+#   ansible.builtin.include_role:
+#     name: acm_preflight
+#     tasks_from: dns_srv      # DNS SRV domain + BIND reachability
+#
+# Running main.yml directly executes all three checks in sequence.
+
+- name: "Run DNS resolution checks"
+  ansible.builtin.include_tasks: dns.yml
+
+- name: "Run CIDR overlap checks"
+  ansible.builtin.include_tasks: cidr.yml
+
+- name: "Run DNS SRV validation"
+  ansible.builtin.include_tasks: dns_srv.yml

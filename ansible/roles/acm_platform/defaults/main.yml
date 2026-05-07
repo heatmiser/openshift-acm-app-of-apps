@@ -1,0 +1,8 @@
+---
+gitops_namespace: "openshift-gitops"
+vault_namespace: "vault"
+vault_kv_mount: "secret"
+vault_hub_auth_mount: "kubernetes"
+vault_hub_role: "hub-role"
+eso_service_account: "external-secrets"
+eso_namespace: "external-secrets"

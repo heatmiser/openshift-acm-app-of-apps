@@ -1,0 +1,4 @@
+---
+bmc_validate_certs: false
+bmc_boot_device: "cd"
+# bmc_iso_url must be supplied by the caller — no safe default

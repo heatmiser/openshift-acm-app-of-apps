@@ -1,0 +1,11 @@
+---
+# Role: acm_platform
+# Always invoke with tasks_from to select the specific operation:
+#
+#   ansible.builtin.include_role:
+#     name: acm_platform
+#     tasks_from: gitops   # Deploy GitOps operator + ArgoCD + root Application
+#
+#   ansible.builtin.include_role:
+#     name: acm_platform
+#     tasks_from: vault    # Initialize Vault, configure Kubernetes auth, load secrets
