@@ -367,7 +367,7 @@ ansible-playbook playbooks/acm_hub_configure.yml --ask-vault-pass
 |----------|----------|-------------|
 | `bare_metal_prep.yml` | 5–10 min | Templates `install-config.yaml` + `agent-config.yaml`, runs `openshift-install agent create image`, syncs ISO to HTTP server, mounts ISO on each node's BMC |
 | `bare_metal_install.yml` | 60–90 min | Sets one-time UEFI boot from virtual CD, graceful restart (power-on fallback), polls `openshift-install agent wait-for install-complete` |
-| `acm_hub_bootstrap.yml` | 5–10 min | Applies GitOps Subscription, waits for CSV, applies ArgoCD CR with envsubst sidecar, deploys root Application |
+| `acm_hub_bootstrap.yml` | 5–10 min | Applies GitOps Subscription, waits for CSV, applies ArgoCD CR with envsubst sidecar, deploys root Application — see [GitOps Architecture](gitops-architecture.md) |
 | `acm_hub_configure.yml` | 30–60 min | Waits for MultiClusterHub Running, initializes Vault (unseal + Kubernetes auth + load secrets), verifies ESO ClusterSecretStore Ready |
 
 ### `bare_metal_prep.yml` pipeline detail
