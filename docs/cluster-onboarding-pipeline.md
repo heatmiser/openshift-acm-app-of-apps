@@ -25,110 +25,29 @@ switch between them.
 
 ## 1. Pipeline Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  Input: vars/clusters/<cluster-name>.yml                            │
-│  (cluster identity, network, node IPs, BMC credentials)             │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │
-              ┌────────────────▼────────────────┐
-              │  Step 0: Pre-flight checks       │
-              │  DNS resolution: api.* + *.apps.*│
-              │  Network CIDR conflict detection │
-              │  (vs. all other cluster configs) │
-              └────────────────┬────────────────┘
-                               │
-              ┌────────────────▼────────────────┐
-              │  Step 1: BMC Redfish discovery   │
-              │  Query each BMC (no boot needed) │
-              │  Harvest: serial number, NIC MACs│
-              │  Validate / populate config YAML │
-              └────────────────┬────────────────┘
-                               │
-              ┌────────────────▼────────────────┐
-              │  Step 2: Live ISO boot +         │
-              │  callback queue drain            │
-              │                                  │
-              │  ├─ Start FastAPI listener        │
-              │  ├─ Boot all nodes in parallel   │
-              │  │   via BMC virtual media        │
-              │  ├─ Nodes POST callback payload:  │
-              │  │   serial, ip, mac, interface  │
-              │  └─ Ansible drains queue:        │
-              │      process each node as it     │
-              │      registers (not all-or-none) │
-              │      → hardware validation       │
-              │      → interface name discovery  │
-              └────────────────┬────────────────┘
-                               │
-              ┌────────────────▼────────────────┐
-              │  Step 3: Facts merge             │
-              │  Match Redfish MACs to OS        │
-              │  interface names via callbacks   │
-              │  Validate CPU / RAM / disk       │
-              │  Write complete cluster config   │
-              └────────────────┬────────────────┘
-                               │
-              ┌────────────────▼────────────────┐
-              │  Step 4: Template rendering      │
-              │  Render Jinja2 templates →       │
-              │  clusters/<name>/                │
-              │   kustomization.yaml             │
-              │   clusterdeployment.yaml         │
-              │   agentclusterinstall.yaml        │
-              │   infraenv.yaml                  │
-              │   externalsecret-pull-secret.yaml│
-              │   nodes/<node>-nmstate.yaml (×N) │
-              │   nodes/kustomization.yaml       │
-              │  Patch cluster-versions.yaml     │
-              │  Patch clusters/hub/values.yaml  │
-              └────────────────┬────────────────┘
-                               │
-              ┌────────────────▼──────────────────────────────┐
-              │  Step 5: Git + Vault (strategy-dependent)      │
-              │                                               │
-              │  ┌─ git_strategy: direct ──────────────────┐  │
-              │  │  1. Load spoke secrets into Vault        │  │
-              │  │     (before push — ESO can sync          │  │
-              │  │     immediately after ArgoCD reconciles) │  │
-              │  │  2. git pull --rebase origin main        │  │
-              │  │  3. git add + commit + push to main      │  │
-              │  └──────────────────────────────────────────┘  │
-              │                                               │
-              │  ┌─ git_strategy: branch_pr ───────────────┐  │
-              │  │  1. git checkout -b cluster-onboard/<n>  │  │
-              │  │  2. git add + commit + push branch       │  │
-              │  │  3. Open PR via GitHub API               │  │
-              │  │  4. Pause (manual) or poll for merge     │  │
-              │  │  5. Load spoke secrets into Vault        │  │
-              │  │     (after merge — secrets only enter    │  │
-              │  │     Vault once the definition is approved│  │
-              │  │     and the pipeline is committed)       │  │
-              │  └──────────────────────────────────────────┘  │
-              └────────────────┬──────────────────────────────┘
-                               │
-              ┌────────────────▼────────────────┐
-              │  Step 6: ArgoCD sync             │  ← configurable
-              │  [trigger immediately | poll]    │
-              │  Wait for Application sync       │
-              └────────────────┬────────────────┘
-                               │
-              ┌────────────────▼────────────────┐
-              │  Step 7: Wait for InfraEnv ISO   │
-              │  Poll InfrastructureEnv until    │
-              │  isoDownloadURL is populated     │
-              │  (ArgoCD + Assisted Installer    │
-              │   must both complete first)      │
-              └────────────────┬────────────────┘
-                               │
-              ┌────────────────▼────────────────┐
-              │  Step 8: BMC ISO mount + boot    │
-              │  Retrieve discovery ISO URL      │
-              │  Mount via iDRAC virtual media   │
-              │  Power cycle nodes               │
-              │  Agents register with ACM        │
-              │  Cluster installs                │
-              └─────────────────────────────────┘
+```mermaid
+flowchart TD
+    Input([vars/clusters/name.yml]) --> S0
+
+    S0["Step 0 — Pre-flight checks<br/>DNS resolution: api.* + *.apps.*<br/>CIDR conflict detection vs all cluster configs"] --> S1
+    S1["Step 1 — BMC Redfish discovery<br/>Harvest serial numbers + NIC MACs<br/>Validate and populate cluster config"] --> S2
+    S2["Step 2 — Live ISO boot + queue drain<br/>SRV record → FastAPI listener → BMC boot<br/>Nodes POST serial + MAC + interface + IP<br/>Drain callbacks — hardware validation"] --> S3
+    S3["Step 3 — Facts merge<br/>Correlate Redfish MACs to OS interface names<br/>Validate CPU / RAM / disk<br/>Remove DNS SRV record"] --> S4
+    S4["Step 4 — Template rendering<br/>Render manifests into clusters/name/<br/>Patch cluster-versions.yaml + hub/values.yaml"] --> S5
+
+    S5{cluster_onboard_git_strategy?}
+
+    S5 -- direct --> D1["Load spoke secrets → Vault<br/>(before push — ESO ready at ArgoCD sync)<br/>git pull --rebase + commit + push to main"]
+    D1 --> S6
+
+    S5 -- branch_pr --> B1["Create branch + commit + push<br/>Open PR via GitHub API<br/>Pause or poll until merged<br/>Load spoke secrets → Vault after merge"]
+    B1 --> S6
+
+    S6["Step 6 — ArgoCD sync<br/>Trigger immediately or await natural poll cycle<br/>Wait for Application Synced + Healthy"] --> S7
+    S7["Step 7 — Wait for InfraEnv ISO<br/>Poll InfrastructureEnv until<br/>isoDownloadURL is populated"] --> S8
+    S8["Step 8 — BMC ISO mount + boot<br/>Mount discovery ISO via iDRAC virtual media<br/>Power cycle nodes — agents register with ACM"]
+
+    S8 --> Done([Cluster installing — monitor in ACM console])
 ```
 
 ### Vault Sequencing Rationale
@@ -173,17 +92,15 @@ The pipeline commits the rendered manifests directly to the `main` branch and
 pushes. ArgoCD detects the change on its next poll cycle or on an explicit sync
 trigger.
 
-```
-render templates
-    │
-load Vault secrets (before push)
-    │
-git pull --rebase origin main
-git add clusters/<name>/ clusters/cluster-versions.yaml clusters/hub/values.yaml
-git commit -m "Add <name> cluster definition [automated]"
-git push origin main  (retry loop on conflict)
-    │
-continue pipeline
+```mermaid
+flowchart TD
+    A([render templates]) --> B
+    B["Load spoke secrets → Vault<br/>(ESO can sync immediately on ArgoCD reconcile)"] --> C
+    C["git pull --rebase origin main"] --> D
+    D["git add clusters/&lt;name&gt;/<br/>clusters/cluster-versions.yaml<br/>clusters/hub/values.yaml"] --> E
+    E["git commit -m 'Add &lt;name&gt; cluster definition'"] --> F
+    F{"push conflict?"} -- yes --> C
+    F -- no --> G([continue pipeline])
 ```
 
 **Pros**
@@ -217,26 +134,22 @@ pushes, and opens a pull request via the GitHub API. The pipeline optionally
 pauses for human review before proceeding, or can continue to later steps while
 the PR is open (if those steps do not depend on ArgoCD sync).
 
-```
-render templates
-    │
-git checkout -b cluster-onboard/<name>-<date>
-git add clusters/<name>/ clusters/cluster-versions.yaml clusters/hub/values.yaml
-git commit -m "Add <name> cluster definition [automated]"
-git push origin cluster-onboard/<name>-<date>
-    │
-POST https://api.github.com/repos/<org>/<repo>/pulls
-    │
-    ├── if cluster_onboard_git_pr_auto_merge: false
-    │       pause: "Review PR at <url>, merge when approved, then continue"
-    │
-    └── if cluster_onboard_git_pr_auto_merge: true
-            wait for PR merge (poll GitHub API)
-            continue pipeline automatically
-    │
-load Vault secrets (after merge)
-    │
-continue pipeline
+```mermaid
+flowchart TD
+    A([render templates]) --> B
+    B["git checkout -b cluster-onboard/&lt;name&gt;-&lt;date&gt;"] --> C
+    C["git add + git commit<br/>git push origin cluster-onboard/&lt;name&gt;-&lt;date&gt;"] --> D
+    D["POST GitHub API<br/>open pull request"] --> E
+
+    E{cluster_onboard_git_pr_auto_merge?}
+
+    E -- false --> F["Pause pipeline<br/>Operator reviews and merges PR manually"]
+    F --> G
+
+    E -- true --> H["Poll GitHub API<br/>until PR merge detected"]
+    H --> G
+
+    G["Load spoke secrets → Vault<br/>(credentials enter Vault only after approval)"] --> Done([continue pipeline])
 ```
 
 **Pros**
@@ -310,15 +223,13 @@ The pipeline calls the ArgoCD API to force an immediate sync of the hub
 Application after the Git push. It then polls the Application status until
 sync completes and the `InfrastructureEnv` resource appears.
 
-```
-git push (or PR merge)
-    │
-POST https://<argocd-server>/api/v1/applications/hub/sync
-    │
-poll Application hub until Synced + Healthy
-poll InfrastructureEnv <name> until isoDownloadURL is populated
-    │
-continue to BMC ISO mount
+```mermaid
+flowchart TD
+    A(["git push / PR merge"]) --> B
+    B["POST ArgoCD API<br/>/api/v1/applications/hub/sync"] --> C
+    C["Poll Application hub<br/>until Synced + Healthy"] --> D
+    D["Poll InfrastructureEnv &lt;name&gt;<br/>until isoDownloadURL is populated"] --> E
+    E([continue to BMC ISO mount])
 ```
 
 **Pros**
@@ -351,13 +262,12 @@ Kubernetes API for the `InfrastructureEnv` resource to appear and for the
 `isoDownloadURL` to be populated, waiting for ArgoCD's natural reconcile cycle
 to pick up the Git change.
 
-```
-git push (or PR merge)
-    │
-poll k8s: wait for InfrastructureEnv <name>.status.isoDownloadURL
-    (retries × delay covers multiple ArgoCD poll cycles)
-    │
-continue to BMC ISO mount
+```mermaid
+flowchart TD
+    A(["git push / PR merge"]) --> B
+    B["ArgoCD natural reconcile cycle<br/>(up to 3 min default poll interval)"] --> C
+    C["Poll Kubernetes API<br/>InfrastructureEnv &lt;name&gt;.status.isoDownloadURL<br/>retries × delay spans multiple ArgoCD cycles"] --> D
+    D([continue to BMC ISO mount])
 ```
 
 **Pros**
