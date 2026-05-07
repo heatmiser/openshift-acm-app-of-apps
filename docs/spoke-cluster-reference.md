@@ -139,11 +139,15 @@ Create the cluster definition file from the provided example:
 
 ```bash
 cp vars/clusters/spoke1.yml vars/clusters/<cluster-name>.yml
-# Edit <cluster-name>.yml — update all fields, rename per naming convention
 ```
 
-See the comments in `vars/clusters/spoke1.yml` for field-by-field guidance and
-the naming convention rationale.
+> **Naming convention:** name the file `<cluster.name>.yml`, matching the stem
+> to the `cluster.name` value defined inside the file. The pipeline play header
+> and CIDR preflight loop labels are derived from the filename, while CIDR
+> conflict error messages are derived from `cluster.name`. Keeping them aligned
+> makes pipeline log output self-consistent and makes the `vars/clusters/`
+> directory scannable at a glance. A mismatch does not cause a pipeline failure,
+> but produces a confusing asymmetry in log output during troubleshooting.
 
 ---
 
