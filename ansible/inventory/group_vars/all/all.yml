@@ -2,7 +2,7 @@
 # =============================================================================
 # OpenShift installation
 # =============================================================================
-openshift_version: "4.21"
+openshift_version: "4.20"
 openshift_install_binary: "/usr/local/bin/openshift-install"
 install_base_dir: "/opt/openshift-install"
 install_dir: "{{ install_base_dir }}/{{ cluster_name }}"

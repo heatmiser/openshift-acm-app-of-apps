@@ -3,9 +3,9 @@
 # ACM operator
 # =============================================================================
 acm_namespace: "open-cluster-management"
-# ACM 2.15 aligns with OCP 4.21 — verify current channel via:
+# ACM 2.14 aligns with OCP 4.20 — verify current channel via:
 #   oc get packagemanifest advanced-cluster-management -o jsonpath='{.status.defaultChannel}'
-acm_channel: "release-2.15"
+acm_channel: "release-2.14"
 acm_install_plan_approval: "Automatic"
 
 # =============================================================================

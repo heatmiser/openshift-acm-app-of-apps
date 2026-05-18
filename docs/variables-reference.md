@@ -97,7 +97,7 @@ Applied to all hosts regardless of group.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `openshift_version` | `4.21` | OCP version string. Must match the `openshift-install` binary version and the `ClusterImageSet`. |
+| `openshift_version` | `4.20` | OCP version string. Must match the `openshift-install` binary version and the `ClusterImageSet`. Update to the latest 4.20.z before provisioning. |
 | `openshift_install_binary` | `/usr/local/bin/openshift-install` | Full path to the `openshift-install` binary on the control node. |
 | `install_base_dir` | `/opt/openshift-install` | Parent directory for cluster install artifacts. Each cluster gets a subdirectory: `{{ install_base_dir }}/{{ cluster_name }}`. |
 | `install_dir` | `{{ install_base_dir }}/{{ cluster_name }}` | Derived. Do not override. |
@@ -137,7 +137,7 @@ Loaded explicitly via `vars_files:` in playbooks that need it.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `acm_namespace` | `open-cluster-management` | Namespace for ACM operator and MultiClusterHub. |
-| `acm_channel` | `release-2.15` | Subscription channel. Must align with OCP version. OCP 4.21 → ACM 2.15. Verify: `oc get packagemanifest advanced-cluster-management -o jsonpath='{.status.defaultChannel}'` |
+| `acm_channel` | `release-2.14` | Subscription channel. Must align with OCP version. OCP 4.20 → ACM 2.14. Verify: `oc get packagemanifest advanced-cluster-management -o jsonpath='{.status.defaultChannel}'` |
 | `acm_install_plan_approval` | `Automatic` | `Automatic` or `Manual`. |
 
 ### MultiClusterHub

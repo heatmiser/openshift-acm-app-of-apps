@@ -1,10 +1,14 @@
 ---
 # ClusterImageSet defines the OCP release image available for spoke cluster
-# deployments. The releaseImage must match the version declared in the
-# AgentServiceConfig osImages list above.
+# deployments. The releaseImage tag must match the z-stream used in the
+# AgentServiceConfig osImages entry (version field and RHCOS URL).
+#
+# Before provisioning: update the releaseImage tag to the latest 4.20.z.
+# Current releases: https://quay.io/repository/openshift-release-dev/ocp-release?tab=tags
+# Filter by: 4.20.*-x86_64
 apiVersion: hive.openshift.io/v1
 kind: ClusterImageSet
 metadata:
-  name: openshift-4.21
+  name: openshift-4.20
 spec:
-  releaseImage: quay.io/openshift-release-dev/ocp-release:4.21.0-x86_64
+  releaseImage: quay.io/openshift-release-dev/ocp-release:4.20.0-x86_64

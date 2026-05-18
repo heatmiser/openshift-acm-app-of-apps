@@ -92,8 +92,8 @@ These are internal to the cluster and must not overlap with your infrastructure 
 ### Install the OpenShift CLI tools
 
 ```bash
-# Download for your OCP version (4.21 shown)
-OCP_VERSION=4.21.0
+# Download for your OCP version (4.20 shown)
+OCP_VERSION=4.20.0
 curl -LO "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/${OCP_VERSION}/openshift-install-linux.tar.gz"
 curl -LO "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/${OCP_VERSION}/openshift-client-linux.tar.gz"
 tar xzf openshift-install-linux.tar.gz -C /usr/local/bin
@@ -289,7 +289,7 @@ ssh_keys:
 Usually requires no changes. Verify the `openshift_version` and `openshift_install_binary` path match your installation:
 
 ```yaml
-openshift_version: "4.21"
+openshift_version: "4.20"
 openshift_install_binary: "/usr/local/bin/openshift-install"
 install_base_dir: "/opt/openshift-install"
 ```
@@ -299,8 +299,8 @@ install_base_dir: "/opt/openshift-install"
 Review and adjust:
 
 ```yaml
-# ACM channel must align with OCP version (OCP 4.21 → ACM 2.15)
-acm_channel: "release-2.15"
+# ACM channel must align with OCP version (OCP 4.20 → ACM 2.14)
+acm_channel: "release-2.14"
 
 # Your fork of this repository
 gitops_repo: "https://github.com/<your-org>/openshift-acm-app-of-apps"

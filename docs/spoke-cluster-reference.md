@@ -117,7 +117,7 @@ the fields in `vars/clusters/<name>.yml`.
 |---------|---------|-------|
 | Cluster name | `spoke1` | Short, DNS-safe, unique across all clusters |
 | Base domain | `example.com` | Must match hub or a delegated zone |
-| OCP version | `4.21` | Must match an available `ClusterImageSet` |
+| OCP version | `4.20` | Must match an available `ClusterImageSet` |
 | Node count | 3 (compact) or 3+N | 3 control-plane nodes; add workers for larger clusters |
 | API VIP | `192.168.2.100` | Unused IP within `machine_network_cidr`; reserved for the API load balancer |
 | Ingress VIP | `192.168.2.101` | Unused IP within `machine_network_cidr`; reserved for the Ingress load balancer |

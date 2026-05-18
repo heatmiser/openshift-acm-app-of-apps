@@ -12,7 +12,7 @@ metadata:
   namespace: open-cluster-management
   annotations:
     installer.open-cluster-management.io/mce-subscription-spec: |
-      channel: stable-2.9
+      channel: stable-2.8
       installPlanApproval: Automatic
       name: multicluster-engine
       source: redhat-operators

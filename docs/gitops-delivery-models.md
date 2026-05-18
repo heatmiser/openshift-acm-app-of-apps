@@ -23,7 +23,7 @@ Everything up to the point of workload delivery is identical across all three mo
 flowchart TD
     A(["Bare metal nodes"]) --> B
     B["Ansible<br/>ISO generation · BMC boot · OCP install"] --> C
-    C["Hub Cluster — OpenShift 4.21<br/>ArgoCD app-of-apps cascade (waves 5 → 25)"] --> D
+    C["Hub Cluster — OpenShift 4.20<br/>ArgoCD app-of-apps cascade (waves 5 → 25)"] --> D
     D["ACM + MultiClusterHub · Vault + ESO<br/>MetalLB · NMState · cert-manager<br/>Assisted Installer (AgentServiceConfig)"] --> E
     E(["Child Clusters — provisioned by ACM Assisted Installer"]) --> F
 

@@ -56,8 +56,8 @@ Automated deployment of a compact, three-node OpenShift Hub cluster on bare meta
 |------|----------------|-------|
 | Python | 3.10+ | |
 | Ansible | 2.16+ | via venv recommended |
-| `openshift-install` | 4.21 | [mirror.openshift.com](https://mirror.openshift.com/pub/openshift-v4/clients/ocp/) |
-| `oc` / `kubectl` | 4.21 | |
+| `openshift-install` | 4.20 | [mirror.openshift.com](https://mirror.openshift.com/pub/openshift-v4/clients/ocp/) |
+| `oc` / `kubectl` | 4.20 | |
 | `kustomize` | 5.x | for local validation |
 | `helm` | 3.x | for local validation |
 
@@ -237,12 +237,12 @@ openshift-acm-app-of-apps/
 
 | Operator | Channel | OCP Version |
 |----------|---------|-------------|
-| ACM | `release-2.15` | 4.21 |
-| MCE | `stable-2.9` | 4.21 |
-| OpenShift GitOps | `latest` | 4.21 |
-| cert-manager | `stable-v1` | 4.21 |
-| MetalLB | `stable` | 4.21 |
-| NMState | `stable` | 4.21 |
+| ACM | `release-2.14` | 4.20 |
+| MCE | `stable-2.8` | 4.20 |
+| OpenShift GitOps | `latest` | 4.20 |
+| cert-manager | `stable-v1` | 4.20 |
+| MetalLB | `stable` | 4.20 |
+| NMState | `stable` | 4.20 |
 | Vault (Helm) | `0.29.1` | — |
 | ESO (Helm) | `0.14.4` | — |
 

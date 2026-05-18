@@ -35,7 +35,10 @@ spec:
         storage: 50Gi
 
   osImages:
-    - openshiftVersion: "4.21"
-      version: "421.9.202505010025-0"
-      url: "https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.21/latest/rhcos-live.x86_64.iso"
+    # Update version and url to the latest 4.20.z RHCOS build before provisioning.
+    # Current builds: https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.20/latest/
+    # The version string and ClusterImageSet releaseImage tag must match.
+    - openshiftVersion: "4.20"
+      version: "420.9.202503260914-0"
+      url: "https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.20/latest/rhcos-live.x86_64.iso"
       cpuArchitecture: x86_64

@@ -47,7 +47,7 @@ cluster:
   # ---------------------------------------------------------------------------
   name: "spoke1"
   base_domain: "example.com"
-  ocp_version: "4.21"
+  ocp_version: "4.20"
 
   # ---------------------------------------------------------------------------
   # Virtual IPs — must be within machine_network_cidr and currently unassigned.
